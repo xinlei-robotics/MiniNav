@@ -1,53 +1,38 @@
 import mininav.core.robot_model;
 import mininav.core.types;
+import mininav.core.command_source;
+import mininav.core.trajectory;
+import mininav.core.logger;
+import mininav.core.csv_writer;
 
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <string_view>
-
-namespace fs = std::filesystem;
-
-namespace {
-[[nodiscard]] mininav::Twist2D command_at(double t) noexcept {
-  using mininav::Twist2D;
-
-  if (t < 5.0) {
-    return Twist2D{1.0, 0.0};
-  }
-  if (t < 10.0) {
-    return Twist2D{1.0, 0.3};
-  }
-  if (t < 15.0) {
-    return Twist2D{1.0, 0.0};
-  }
-  return Twist2D{0.5, 0.4};
-}
-} // namespace
+#include <exception>
 
 int main() {
-  constexpr double dt = 0.1;
+  constexpr double dt = 0.01;
   constexpr double total_time = 20.0;
-  constexpr std::string_view output_file = "data/traj.csv";
 
-  fs::create_directories("data");
+  mininav::Logger logger;
+  mininav::RobotModel model;
+  mininav::StagedCommandSource command_source;
+  mininav::Trajectory trajectory;
+  mininav::Pose2D pose{0.0, 0.0, 0.0};
+  mininav::CsvWriter writer;
 
-  std::ofstream out(output_file.data());
-  if (!out) {
-    std::cerr << "Failed to open output file: " << output_file << std::endl;
+  logger.info("MiniNav V0 Simulation Started.");
+  try {
+    for (double t = 0.0; t <= total_time; t += dt) {
+      const auto cmd = command_source.command_at(t);
+      trajectory.append(mininav::StateRecord{t, pose, cmd});
+      pose = model.step(pose, cmd, dt);
+    }
+
+    writer.write_trajectory(trajectory, "data/traj.csv");
+    logger.info("Trajectory CSV written to data/traj.csv");
+    logger.info("MiniNav V0 Simulation finished.");
+  } catch (const std::exception &ex) {
+    logger.error(ex.what());
     return 1;
   }
 
-  out << "t,x,y,yaw,v,w\n";
-  mininav::RobotModel model;
-  mininav::Pose2D pose{};
-  for (double t = 0.0; t <= total_time; t += dt) {
-    const auto cmd = command_at(t);
-    out << t << "," << pose.x << "," << pose.y << "," << pose.yaw << ","
-        << cmd.v << "," << cmd.w << "\n";
-    pose = model.step(pose, cmd, dt);
-  }
-
-  std::cout << "Trajectory saved to: " << output_file << std::endl;
   return 0;
 }
