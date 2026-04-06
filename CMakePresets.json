@@ -13,9 +13,9 @@
       "binaryDir": "${sourceDir}/build/clang18-debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_C_COMPILER": "/usr/bin/clang-18",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON"
       }
     },
     {
@@ -25,9 +25,9 @@
       "binaryDir": "${sourceDir}/build/clang18-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_C_COMPILER": "/usr/bin/clang-18",
         "CMAKE_CXX_COMPILER": "/usr/bin/clang++-18",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_COLOR_DIAGNOSTICS": "ON"
       }
     }
   ],

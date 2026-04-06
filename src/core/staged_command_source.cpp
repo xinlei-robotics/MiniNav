@@ -8,13 +8,13 @@ Twist2D StagedCommandSource::command_at(double t) const noexcept {
   if (t < 0.0) {
     return Twist2D{0.0, 0.0};
   } else if (t < 5.0) {
-    return Twist2D{1.0, 0.1 * kPi};
+    return Twist2D{2, -0.2 * kPi};
   } else if (t < 10.0) {
-    return Twist2D{1.0, 0.3 * kPi};
+    return Twist2D{4, 0.5 * kPi};
   } else if (t < 15.0) {
-    return Twist2D{1.0, 0.0};
+    return Twist2D{-2, 0.0};
   } else {
-    return Twist2D{0.5, -0.4 * kPi};
+    return Twist2D{3, -kPi};
   }
 }
 } // namespace mininav
