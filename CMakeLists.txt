@@ -22,12 +22,14 @@ find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 set(CORE_MODULE_SOURCES
         src/core/types.ixx
         src/core/math.ixx
+        src/core/kinematics.ixx
         src/core/robot_model.ixx
 )
 
 set(CORE_IMPL_SOURCES
-        src/core/robot_model.cpp
         src/core/types.cpp
+        src/core/kinematics.cpp
+        src/core/robot_model.cpp
 )
 
 # ------------------------------------------------------------------
@@ -38,13 +40,14 @@ add_executable(sim_v0)
 target_sources(sim_v0
         PRIVATE
         ${CORE_IMPL_SOURCES}
-        src/core/csv_writer.cpp
+        src/core/csv_format.cpp
         src/core/staged_command_source.cpp
         src/apps/sim_v0_main.cpp
         PRIVATE
         FILE_SET CXX_MODULES FILES
         ${CORE_MODULE_SOURCES}
         src/core/trajectory.ixx
+        src/core/csv_format.ixx
         src/core/csv_writer.ixx
         src/core/logger.ixx
         src/core/command_source.ixx
