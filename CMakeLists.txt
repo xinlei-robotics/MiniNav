@@ -11,6 +11,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(warnings)
 
+# --------------------------------------------------
+# 依赖项
+# --------------------------------------------------
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+
 # ------------------------------------------------------------------
 # 公共模块与实现源文件
 # ------------------------------------------------------------------
@@ -22,6 +27,7 @@ set(CORE_MODULE_SOURCES
 
 set(CORE_IMPL_SOURCES
         src/core/robot_model.cpp
+        src/core/types.cpp
 )
 
 # ------------------------------------------------------------------
@@ -43,6 +49,8 @@ target_sources(sim_v0
         src/core/logger.ixx
         src/core/command_source.ixx
 )
+
+target_link_libraries(sim_v0 PRIVATE Eigen3::Eigen)
 
 # 将项目根目录作为宏传递给代码，便于使用绝对路径输出文件
 target_compile_definitions(sim_v0 PRIVATE
@@ -69,6 +77,8 @@ target_sources(robot_model_tests
         FILE_SET CXX_MODULES FILES
         ${CORE_MODULE_SOURCES}
 )
+
+target_link_libraries(robot_model_tests PRIVATE Eigen3::Eigen)
 
 set_property(TARGET robot_model_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
 

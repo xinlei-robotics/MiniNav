@@ -15,7 +15,7 @@ def load_csv(path: Path):
 
 
 def main():
-    data_path = Path("data/traj.csv")
+    data_path = Path("../data/traj.csv")
     result_dir = Path("results")
     result_dir.mkdir(parents=True, exist_ok=True)
 

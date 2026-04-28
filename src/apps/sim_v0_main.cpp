@@ -6,7 +6,6 @@ import mininav.core.logger;
 import mininav.core.csv_writer;
 
 #include <exception>
-#include <filesystem>
 #include <string>
 
 int main() {
@@ -23,7 +22,7 @@ int main() {
   const std::string output_path =
       std::string(PROJECT_ROOT_DIR) + "/data/traj.csv";
 
-  logger.info("MiniNav V0 Simulation Started.");
+  mininav::Logger::info("MiniNav V0 Simulation Started.");
   try {
     for (double t = 0.0; t <= total_time; t += dt) {
       const auto cmd = command_source.command_at(t);
