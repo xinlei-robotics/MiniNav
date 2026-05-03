@@ -29,4 +29,4 @@ export namespace mininav
 
         [[nodiscard]] virtual Pose2D step(const Pose2D& current, const Twist2D& control, double dt) const noexcept;
     };
-} // namespace mininav
+}

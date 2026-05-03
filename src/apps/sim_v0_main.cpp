@@ -8,7 +8,6 @@ import mininav.viz.rerun_sink;
 import mininav.viz.sim_state_log;
 
 #include <cstddef>
-#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <optional>
@@ -23,14 +22,9 @@ namespace
     constexpr std::string_view kApplicationId = "mininav_v0";
 
     // -------------------------------------------------------------------------
-    // CLI:V0 阶段只支持两个开关,够用就行。
+    // CLI:V0 阶段支持两个开关。
     //   --rrd <path>   保存到指定 .rrd 文件,不启动 Viewer
     //   --no-viz       完全关闭 Rerun 输出,只生成 CSV
-    //
-    // 不引入第三方 CLI 库的取舍:
-    //   - 当前选项极少,手写解析 ~30 行,可读性反而更高。
-    //   - 避免依赖图被一个为了 V0 加的东西污染。
-    //   - 等到 V3+ 真有十几个参数时再引入 cxxopts / CLI11。
     // -------------------------------------------------------------------------
     struct CliOptions
     {
@@ -43,8 +37,7 @@ namespace
         CliOptions opts{};
         for (int i = 1; i < argc; ++i)
         {
-            const std::string_view arg{argv[i]};
-            if (arg == "--no-viz")
+            if (const std::string_view arg{argv[i]}; arg == "--no-viz")
             {
                 opts.disable_viz = true;
             }
@@ -66,7 +59,7 @@ namespace
         }
         return opts;
     }
-} // namespace
+}
 
 int main(const int argc, char** argv)
 {
@@ -75,7 +68,7 @@ int main(const int argc, char** argv)
 
     try
     {
-        const CliOptions cli = parse_cli(argc, argv);
+        const auto [rrd_path, disable_viz] = parse_cli(argc, argv);
 
         // ---- Trajectory + CSV 输出准备 -------------------------------------
         Trajectory<SimStateV0> trajectory;
@@ -91,12 +84,12 @@ int main(const int argc, char** argv)
         //   --rrd <path>            → sink 处于 Save 模式,写入指定文件
         //   (无参数)                → sink 处于 Spawn 模式,自动拉起 Viewer
         std::optional<RerunSink> sink;
-        if (!cli.disable_viz)
+        if (!disable_viz)
         {
-            if (cli.rrd_path.has_value())
+            if (rrd_path.has_value())
             {
-                sink.emplace(kApplicationId, *cli.rrd_path);
-                Logger::info("Rerun: writing to " + cli.rrd_path->string());
+                sink.emplace(kApplicationId, *rrd_path);
+                Logger::info("Rerun: writing to " + rrd_path->string());
             }
             else
             {

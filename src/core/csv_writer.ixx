@@ -37,4 +37,4 @@ export namespace mininav
             out << csv_row(record) << '\n';
         }
     }
-} // namespace mininav
+}

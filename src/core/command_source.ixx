@@ -23,4 +23,4 @@ export namespace mininav
     public:
         [[nodiscard]] Twist2D command_at(double t) const noexcept override;
     };
-} // namespace mininav
+}

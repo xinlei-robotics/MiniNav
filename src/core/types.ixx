@@ -30,7 +30,7 @@ export namespace mininav
         {
         }
 
-        Pose2D(Eigen::Vector2d position, double yaw) noexcept
+        Pose2D(Eigen::Vector2d position, const double yaw) noexcept
             : position_{std::move(position)}, yaw_{yaw}
         {
         }

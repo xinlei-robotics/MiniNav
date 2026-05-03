@@ -29,4 +29,4 @@ export namespace mininav
     private:
         container_type records_{};
     };
-} // namespace mininav
+}

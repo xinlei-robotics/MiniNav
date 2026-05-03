@@ -11,4 +11,4 @@ namespace mininav
     {
         return differential_drive_step(current, control, dt);
     }
-} // namespace mininav
+}

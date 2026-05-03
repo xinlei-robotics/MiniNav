@@ -19,4 +19,4 @@ export namespace mininav
         }
         return angle - kPi;
     }
-} // namespace mininav
+}

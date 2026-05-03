@@ -5,7 +5,7 @@ import mininav.core.math;
 
 namespace mininav
 {
-    Twist2D StagedCommandSource::command_at(double t) const noexcept
+    Twist2D StagedCommandSource::command_at(const double t) const noexcept
     {
         if (t < 0.0)
         {
