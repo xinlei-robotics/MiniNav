@@ -15,11 +15,13 @@ include(warnings)
 # 第三方依赖
 # ------------------------------------------------------------------
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+include(rerun)
 
 # ------------------------------------------------------------------
 # 子模块库
 # ------------------------------------------------------------------
 add_subdirectory(src/core)
+add_subdirectory(src/viz)
 
 # ------------------------------------------------------------------
 # 目标: sim_v0
@@ -28,7 +30,7 @@ add_executable(sim_v0
         src/apps/sim_v0_main.cpp
 )
 
-target_link_libraries(sim_v0 PRIVATE core)
+target_link_libraries(sim_v0 PRIVATE core viz)
 
 target_compile_definitions(sim_v0 PRIVATE
         PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"

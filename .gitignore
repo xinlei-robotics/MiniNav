@@ -24,6 +24,7 @@ env/
 /results/*.png
 /results/*.svg
 /results/*.pdf
+/results/*.rrd
 /data/*.csv
 
 # OS
