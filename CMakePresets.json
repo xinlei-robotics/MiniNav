@@ -29,6 +29,16 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_COLOR_DIAGNOSTICS": "ON"
       }
+    },
+    {
+      "name": "ci-debug",
+      "displayName": "CI: Clang 18 + Ninja (Debug, no rerun)",
+      "description": "Used by GitHub Actions CI. Inherits clang18-debug, disables optional dependencies that aren't installed in the CI environment.",
+      "inherits": "clang18-debug",
+      "binaryDir": "${sourceDir}/build/ci-debug",
+      "cacheVariables": {
+        "RERUN_ENABLED": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -41,6 +51,37 @@
       "name": "build-release",
       "displayName": "Build Release",
       "configurePreset": "clang18-release"
+    },
+    {
+      "name": "build-ci-debug",
+      "displayName": "Build CI Debug",
+      "configurePreset": "ci-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test-debug",
+      "displayName": "Test Debug",
+      "configurePreset": "clang18-debug",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "test-ci-debug",
+      "displayName": "Test CI Debug",
+      "configurePreset": "ci-debug",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "stopOnFailure": false
+      }
     }
   ]
 }

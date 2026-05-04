@@ -6,22 +6,55 @@ on:
   push:
     branches: [main]
 
+# Cancel in-progress runs when a new commit is pushed to the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
+    name: Build and Test (Clang 18, Debug)
     runs-on: ubuntu-24.04
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Clang 18 and Ninja
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 lld-18 ninja-build cmake
-      
-      - name: Configure
-        run: cmake --preset debug  # 用你已有的 CMakePresets.json
-      
+          sudo apt-get install -y \
+            clang-18 \
+            lld-18 \
+            libstdc++-13-dev \
+            libc++-18-dev \
+            libc++abi-18-dev \
+            ninja-build \
+            cmake \
+            libeigen3-dev
+
+      - name: Verify toolchain versions
+        run: |
+          /usr/bin/clang++-18 --version
+          cmake --version
+          ninja --version
+
+      - name: Configure (CI Debug preset)
+        run: cmake --preset ci-debug
+
       - name: Build
-        run: cmake --build --preset debug
-      
-      - name: Test
-        run: ctest --preset debug --output-on-failure
+        run: cmake --build --preset build-ci-debug
+
+      - name: Run tests
+        run: ctest --preset test-ci-debug
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            build/ci-debug/Testing/Temporary/LastTest.log
+            build/ci-debug/CMakeFiles/CMakeOutput.log
+            build/ci-debug/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
