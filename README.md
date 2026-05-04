@@ -2,6 +2,8 @@
 
 # MiniNav
 
+[![CI](https://github.com/xinlei-robotics/MiniNav/actions/workflows/ci.yml/badge.svg)](https://github.com/xinlei-robotics/MiniNav/actions/workflows/ci.yml)
+
 **Indoor mobile robot localization & navigation system in modern C++.**
 
 From kinematic simulation to a Raspberry Pi 5 + 4WD car indoor navigation
