@@ -451,12 +451,7 @@ SDK,投入产出比在 V0 阶段过低。**计划**:V3 工程化阶段引入 `Mo
 `RerunSink` 用 `::setenv` 注入 venv 路径,这是 POSIX 函数。Windows
 需要用 `_putenv_s`。本项目锁定 WSL Linux，因此暂不处理该问题。
 
-### 7.3 `--rrd` 与 `--no-viz` 没做互斥检查
-
-如果同时传两个参数,行为是 `--no-viz` 胜出,`--rrd` 被静默吞掉。
-应该 fail fast 报错。
-
-### 7.4 `RobotModel` / `CommandSource` 的过度抽象
+### 7.3 `RobotModel` / `CommandSource` 的过度抽象
 
 它们目前都是无状态的,但用了 `virtual` + 删除拷贝/移动构造的"多态
 基类协议"。这是为 V1+ 预留的接口,但目前没有任何派生类,所以体现为
@@ -466,7 +461,7 @@ V1 引入 `NoisyRobotModel` / `FilePlaybackCommandSource` 时这些抽象
 会"激活";如果到 V2 仍然只有一个实现,这块抽象需要被删除——**过早
 抽象比没有抽象更糟**。
 
-### 7.5 浮点累计误差
+### 7.4 浮点累计误差
 
 主循环用 `t = i * dt` 计算时间(避免 `t += dt` 的累计误差)。但
 `StagedCommandSource` 的判断条件 `t < 5.0` 在 `t = 4.999...` 还是
@@ -474,7 +469,7 @@ V1 引入 `NoisyRobotModel` / `FilePlaybackCommandSource` 时这些抽象
 做轨迹比对时可能引入微小差异。需要时可以改用 `i * dt < 5.0 / dt` 的整数
 比较。
 
-### 7.6 没有 CI
+### 7.5 没有 CI
 
 代码里的"绿色测试"目前只在本机运行。**计划**:V3 阶段引入 GitHub
 Actions,跑 ubuntu-24.04 + clang-18 的矩阵。

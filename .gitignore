@@ -21,7 +21,6 @@ venv/
 env/
 
 # Results / generated
-/results/*.png
 /results/*.svg
 /results/*.pdf
 /results/*.rrd
