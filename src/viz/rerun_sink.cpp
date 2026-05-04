@@ -109,7 +109,7 @@ namespace mininav
     // ----- log_pose -----------------------------------------------------------
 
     void RerunSink::log_pose(const std::string_view entity_path,
-                             const Pose2D& pose) const noexcept
+                             const Pose2D& pose) noexcept
     {
         const float x = static_cast<float>(pose.x());
         const float y = static_cast<float>(pose.y());
@@ -137,7 +137,7 @@ namespace mininav
     // ----- log_twist ----------------------------------------------------------
 
     void RerunSink::log_twist(const std::string_view entity_path,
-                              const Twist2D& twist) const noexcept
+                              const Twist2D& twist) noexcept
     {
         const std::string base{entity_path};
         impl_->stream.log(base + "/v", rerun::Scalars{twist.v()});
@@ -147,7 +147,7 @@ namespace mininav
     // ----- log_scalar ---------------------------------------------------------
 
     void RerunSink::log_scalar(const std::string_view entity_path,
-                               const double value) const noexcept
+                               const double value) noexcept
     {
         impl_->stream.log(std::string{entity_path}, rerun::Scalars{value});
     }
@@ -155,7 +155,7 @@ namespace mininav
     // ----- log_axes -----------------------------------------------------------
 
     void RerunSink::log_axes(const std::string_view entity_path,
-                             const float length) const noexcept
+                             const float length) noexcept
     {
         const std::array origins{
             rerun::Position3D{0.0F, 0.0F, 0.0F},

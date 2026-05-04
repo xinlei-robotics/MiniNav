@@ -35,10 +35,10 @@ export namespace mininav
 
         void set_time(double t_seconds) const noexcept;
 
-        void log_pose(std::string_view entity_path, const Pose2D& pose) const noexcept;
-        void log_twist(std::string_view entity_path, const Twist2D& twist) const noexcept;
-        void log_scalar(std::string_view entity_path, double value) const noexcept;
-        void log_axes(std::string_view entity_path, float length = 0.5F) const noexcept;
+        void log_pose(std::string_view entity_path, const Pose2D& pose) noexcept;
+        void log_twist(std::string_view entity_path, const Twist2D& twist) noexcept;
+        void log_scalar(std::string_view entity_path, double value) noexcept;
+        void log_axes(std::string_view entity_path, float length = 0.5F) noexcept;
 
     private:
         struct Impl;

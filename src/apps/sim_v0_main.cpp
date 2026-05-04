@@ -57,6 +57,12 @@ namespace
                 };
             }
         }
+        if (opts.disable_viz && opts.rrd_path.has_value())
+        {
+            throw std::runtime_error{
+                "--rrd and --no-viz are mutually exclusive"
+            };
+        }
         return opts;
     }
 }
@@ -89,27 +95,27 @@ int main(const int argc, char** argv)
             if (rrd_path.has_value())
             {
                 sink.emplace(kApplicationId, *rrd_path);
-                Logger::info("Rerun: writing to " + rrd_path->string());
+                mininav::log::info("Rerun: writing to " + rrd_path->string());
             }
             else
             {
                 sink.emplace(kApplicationId);
-                Logger::info("Rerun: Viewer spawned (gRPC).");
+                mininav::log::info("Rerun: Viewer spawned (gRPC).");
             }
         }
         else
         {
-            Logger::info("Rerun: disabled by --no-viz.");
+            mininav::log::info("Rerun: disabled by --no-viz.");
         }
 
+        const RobotModel model;
+        const StagedCommandSource command_source;
         Pose2D pose{0.0, 0.0, 0.0};
 
-        Logger::info("MiniNav V0 simulation started.");
+        mininav::log::info("MiniNav V0 simulation started.");
 
         for (std::size_t i = 0; i < step_count; ++i)
         {
-            const RobotModel model;
-            const StagedCommandSource command_source;
             const double t = static_cast<double>(i) * kSimulationDt;
             const auto cmd = command_source.command_at(t);
 
@@ -126,12 +132,12 @@ int main(const int argc, char** argv)
         }
 
         write_csv(trajectory, csv_path);
-        Logger::info("Trajectory CSV written to " + csv_path.string());
-        Logger::info("MiniNav V0 simulation ended.");
+        mininav::log::info("Trajectory CSV written to " + csv_path.string());
+        mininav::log::info("MiniNav V0 simulation ended.");
     }
     catch (const std::exception& ex)
     {
-        mininav::Logger::error(ex.what());
+        mininav::log::error(ex.what());
         return 1;
     }
     return 0;

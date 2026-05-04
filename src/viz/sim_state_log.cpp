@@ -29,6 +29,6 @@ namespace mininav
         sink.log_axes("/world/origin", 1.0F);
         sink.log_pose(entity_root, state.pose);
         sink.log_axes(body_path, 0.5F);
-        sink.log_twist(cmd_path, state.twist);
+        sink.log_twist(cmd_path, state.cmd);
     }
 }

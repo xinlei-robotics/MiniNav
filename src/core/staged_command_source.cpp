@@ -25,4 +25,4 @@ namespace mininav
         }
         return Twist2D{3.0, -kPi};
     }
-} // namespace mininav
+}

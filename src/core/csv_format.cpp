@@ -33,8 +33,8 @@ namespace mininav
             << record.pose.x() << ','
             << record.pose.y() << ','
             << record.pose.yaw() << ','
-            << record.twist.v() << ','
-            << record.twist.w();
+            << record.cmd.v() << ','
+            << record.cmd.w();
         return os.str();
     }
 }

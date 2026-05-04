@@ -101,6 +101,6 @@ export namespace mininav
     {
         double t{0.0};
         Pose2D pose{};
-        Twist2D twist{};
+        Twist2D cmd{};
     };
-} // namespace mininav
+}

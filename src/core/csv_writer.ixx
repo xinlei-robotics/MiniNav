@@ -22,7 +22,7 @@ export namespace mininav
         namespace fs = std::filesystem;
         if (path.has_parent_path())
         {
-            fs::create_directory(path.parent_path());
+            fs::create_directories(path.parent_path());
         }
 
         std::ofstream out{path};

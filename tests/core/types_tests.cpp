@@ -102,13 +102,13 @@ TEST(SimStateV0, AggregateInitialization) {
   EXPECT_NEAR(state.pose.x(), 2.0, kEps);
   EXPECT_NEAR(state.pose.y(), 3.0, kEps);
   EXPECT_NEAR(state.pose.yaw(), 0.5, kEps);
-  EXPECT_NEAR(state.twist.v(), 1.0, kEps);
-  EXPECT_NEAR(state.twist.w(), 0.1, kEps);
+  EXPECT_NEAR(state.cmd.v(), 1.0, kEps);
+  EXPECT_NEAR(state.cmd.w(), 0.1, kEps);
 }
 
 TEST(SimStateV0, DefaultConstructionIsZero) {
   const mininav::SimStateV0 state{};
   EXPECT_NEAR(state.t, 0.0, kEps);
   EXPECT_NEAR(state.pose.x(), 0.0, kEps);
-  EXPECT_NEAR(state.twist.v(), 0.0, kEps);
+  EXPECT_NEAR(state.cmd.v(), 0.0, kEps);
 }
