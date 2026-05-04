@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Clang 18 and Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 ninja-build cmake
+      
+      - name: Configure
+        run: cmake --preset debug  # 用你已有的 CMakePresets.json
+      
+      - name: Build
+        run: cmake --build --preset debug
+      
+      - name: Test
+        run: ctest --preset debug --output-on-failure
