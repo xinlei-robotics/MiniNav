@@ -4,6 +4,7 @@ add_executable(core_tests
         core/robot_model_tests.cpp
         core/trajectory_tests.cpp
         core/types_tests.cpp
+        core/random_tests.cpp
 )
 
 target_link_libraries(core_tests

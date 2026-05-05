@@ -26,6 +26,7 @@ target_sources(core
         csv_writer.ixx
         logger.ixx
         command_source.ixx
+        random.ixx
 )
 
 target_link_libraries(core PUBLIC Eigen3::Eigen)
