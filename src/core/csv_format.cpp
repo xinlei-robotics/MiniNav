@@ -37,4 +37,33 @@ namespace mininav
             << record.cmd.w();
         return os.str();
     }
+
+    [[nodiscard]] std::string csv_header(const SimStateV1&)
+    {
+        return "t,"
+            "cmd_v,cmd_w,"
+            "true_v,true_w,"
+            "truth_x,truth_y,truth_yaw,"
+            "enc_dl,enc_dr,"
+            "odom_x,odom_y,odom_yaw";
+    }
+
+    [[nodiscard]] std::string csv_row(const SimStateV1& record)
+    {
+        std::ostringstream os;
+        configure_stream(os);
+        os << record.t << ','
+            << record.cmd.v() << ',' << record.cmd.w() << ','
+            << record.true_velocity.v() << ',' << record.true_velocity.w() << ','
+            << record.truth_pose.x() << ','
+            << record.truth_pose.y() << ','
+            << record.truth_pose.yaw() << ','
+            << record.enc_dticks.left << ','
+            << record.enc_dticks.right << ','
+            << record.odom_pose.x() << ','
+            << record.odom_pose.y() << ','
+            << record.odom_pose.yaw();
+
+        return os.str();
+    }
 }
