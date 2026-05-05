@@ -86,21 +86,26 @@ export namespace mininav
         double w_{0.0};
     };
 
-    // ---------------------------------------------------------------------------
-    // SimStateV0: V0 仿真器每一步的状态快照
-    //
-    // V0 阶段记录三件事:时间戳、当前真实位姿、当前施加的控制量。
-    // 这是"理想运动仿真"——没有噪声、没有估计、没有规划。
-    //
-    // 设计原则:
-    //   - SimState 是按版本演化的纯数据结构,不强求版本间向后兼容。
-    //   - 每个 SimStateVN 对应那个版本的"我们关心什么"。
-    //     V1 会新增 odom_pose 等字段,V2 会新增 ekf_pose、协方差等。
-    // ---------------------------------------------------------------------------
     struct SimStateV0
     {
         double t{0.0};
         Pose2D pose{};
         Twist2D cmd{};
+    };
+
+    struct EncoderTicks
+    {
+        std::int64_t left{0};
+        std::int64_t right{0};
+    };
+
+    struct SimStateV1
+    {
+        double t{0.0};
+        Twist2D cmd;
+        Twist2D true_velocity;
+        Pose2D truth_pose;
+        EncoderTicks enc_dticks;
+        Pose2D odom_pose;
     };
 }
