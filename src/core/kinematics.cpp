@@ -24,4 +24,21 @@ namespace mininav
 
         return Pose2D{next_x, next_y, next_yaw};
     }
+
+    std::pair<double, double> inverse_kinematics(const Twist2D& body, const double wheel_base) noexcept
+    {
+        const double half_L_omega = 0.5 * body.w() * wheel_base;
+
+        const double v_left = body.v() - half_L_omega;
+        const double v_right = body.v() + half_L_omega;
+
+        return {v_left, v_right};
+    }
+
+    Twist2D forward_kinematics(const double v_left, const double v_right, const double wheel_base) noexcept
+    {
+        const double v = 0.5 * (v_left + v_right);
+        const double w = (v_right - v_left) / wheel_base;
+        return Twist2D{v, w};
+    }
 }
