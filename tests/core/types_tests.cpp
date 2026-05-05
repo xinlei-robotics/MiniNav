@@ -112,3 +112,30 @@ TEST(SimStateV0, DefaultConstructionIsZero) {
   EXPECT_NEAR(state.pose.x(), 0.0, kEps);
   EXPECT_NEAR(state.cmd.v(), 0.0, kEps);
 }
+
+// ---------------------------------------------------------------------------
+// SimStateV1
+// ---------------------------------------------------------------------------
+
+TEST(EncoderTicks, DefaultConstructed) {
+  mininav::EncoderTicks t;
+  EXPECT_EQ(t.left,  0);
+  EXPECT_EQ(t.right, 0);
+}
+
+TEST(EncoderTicks, AggregateInit) {
+  mininav::EncoderTicks t{.left = 100, .right = -50};
+  EXPECT_EQ(t.left,   100);
+  EXPECT_EQ(t.right, -50);
+}
+
+TEST(SimStateV1, DefaultIsWellFormed) {
+  mininav::SimStateV1 s{};
+  EXPECT_DOUBLE_EQ(s.t, 0.0);
+  EXPECT_DOUBLE_EQ(s.cmd.v(), 0.0);
+  EXPECT_DOUBLE_EQ(s.cmd.w(), 0.0);
+  EXPECT_EQ(s.enc_dticks.left, 0);
+  EXPECT_EQ(s.enc_dticks.right, 0);
+  EXPECT_DOUBLE_EQ(s.truth_pose.yaw(), 0.0);
+  EXPECT_DOUBLE_EQ(s.odom_pose.yaw(),  0.0);
+}
