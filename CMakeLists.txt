@@ -22,6 +22,7 @@ include(rerun)
 # ------------------------------------------------------------------
 add_subdirectory(src/core)
 add_subdirectory(src/viz)
+add_subdirectory(src/sensors)
 
 # ------------------------------------------------------------------
 # 目标: sim_v0
