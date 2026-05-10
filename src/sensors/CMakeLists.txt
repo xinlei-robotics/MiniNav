@@ -3,10 +3,12 @@ add_library(sensors STATIC)
 target_sources(sensors
         PRIVATE
         actuator_model.cpp
+        wheel_encoder.cpp
         PUBLIC
         FILE_SET CXX_MODULES
         FILES
         actuator_model.ixx
+        wheel_encoder.ixx
 )
 
 target_link_libraries(sensors PUBLIC core)
