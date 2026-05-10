@@ -31,6 +31,7 @@ gtest_discover_tests(core_tests
 # ------------------------------------------------------------------
 add_executable(sensors_tests
         sensors/actuator_model_tests.cpp
+        sensors/wheel_encoder_tests.cpp
 )
 
 target_link_libraries(sensors_tests
