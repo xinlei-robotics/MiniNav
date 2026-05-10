@@ -16,7 +16,7 @@ namespace
 
     [[nodiscard]] WheelEncoderModel make_model(
         double       slip_sigma   = 0.0,
-        double       wheel_radius = 0.033,
+        double       wheel_radius = 0.032,
         std::int64_t tpr          = 1024,
         std::uint32_t seed_left   = 1,
         std::uint32_t seed_right  = 2)
