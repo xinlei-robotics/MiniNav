@@ -48,3 +48,26 @@ gtest_discover_tests(sensors_tests
         PROPERTIES
         LABELS "sensors"
 )
+
+# ------------------------------------------------------------------
+# localization 模块的测试
+# ------------------------------------------------------------------
+add_executable(localization_tests
+        localization/wheel_odometry_tests.cpp
+)
+
+target_link_libraries(localization_tests
+        PRIVATE
+        core
+        localization
+        GTest::gtest_main          # 与 sensors_tests 用同一目标名
+)
+
+set_property(TARGET localization_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(localization_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(localization_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "localization"
+)

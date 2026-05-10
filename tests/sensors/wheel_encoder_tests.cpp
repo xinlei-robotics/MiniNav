@@ -1,11 +1,11 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <numbers>
 #include <random>
 
 import mininav.core.types;
 import mininav.sensors.wheel_encoder;
+import mininav.core.math;
 
 namespace
 {
@@ -75,7 +75,7 @@ TEST(WheelEncoderModel, InPlaceRotationProducesOppositeTicks)
     std::int64_t left_total = 0, right_total = 0;
     for (int i = 0; i < 100; ++i)
     {
-        const auto t = m.measure(Twist2D{0.0, std::numbers::pi}, 0.02);
+        const auto t = m.measure(Twist2D{0.0, mininav::kPi}, 0.02);
         left_total  += t.left;
         right_total += t.right;
     }
@@ -140,9 +140,9 @@ TEST(WheelEncoderModel, LowSpeedAccumulatesCorrectlyDespiteRoundingToZero)
 // ---------------------------------------------------------------------------
 TEST(WheelEncoderModel, ReproducibleWithSameSeed)
 {
-    auto m1 = make_model(/*slip_sigma=*/0.05, /*wheel_radius=*/0.033, /*tpr=*/1024,
+    auto m1 = make_model(/*slip_sigma=*/0.05, /*wheel_radius=*/0.032, /*tpr=*/1024,
                          /*seed_left=*/42, /*seed_right=*/43);
-    auto m2 = make_model(/*slip_sigma=*/0.05, /*wheel_radius=*/0.033, /*tpr=*/1024,
+    auto m2 = make_model(/*slip_sigma=*/0.05, /*wheel_radius=*/0.032, /*tpr=*/1024,
                          /*seed_left=*/42, /*seed_right=*/43);
 
     for (int i = 0; i < 100; ++i)
@@ -167,9 +167,9 @@ TEST(WheelEncoderModel, ZeroSlipSigmaDoesNotConsumeRng)
     // 实现技巧: 直接对比 σ=0 model 与"跳过对应步"的 σ>0 model 的输出
     // 比较脆。更直接的检查 —— σ=0 时连续多步的 ticks 完全由 (v,dt)
     // 唯一决定, 与 RNG 无关:
-    auto m1 = make_model(/*slip_sigma=*/0.0, /*wheel_radius=*/0.033, /*tpr=*/1024,
+    auto m1 = make_model(/*slip_sigma=*/0.0, /*wheel_radius=*/0.032, /*tpr=*/1024,
                          /*seed_left=*/42, /*seed_right=*/43);
-    auto m2 = make_model(/*slip_sigma=*/0.0, /*wheel_radius=*/0.033, /*tpr=*/1024,
+    auto m2 = make_model(/*slip_sigma=*/0.0, /*wheel_radius=*/0.032, /*tpr=*/1024,
                          /*seed_left=*/9999, /*seed_right=*/8888);  // 不同 seed
 
     for (int i = 0; i < 50; ++i)
