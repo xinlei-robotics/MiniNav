@@ -2,7 +2,6 @@ module;
 
 #include <cmath>
 #include <cstdint>
-#include <numbers>
 #include <random>
 #include <utility>
 
@@ -10,6 +9,7 @@ module mininav.sensors.wheel_encoder;
 
 import mininav.core.types;
 import mininav.core.kinematics;
+import mininav.core.math;
 
 namespace mininav
 {
@@ -26,7 +26,7 @@ namespace mininav
                                          std::mt19937 slip_rng_right) noexcept
         : params_{params},
           distance_per_tick_{
-              2.0 * std::numbers::pi * params.wheel_radius / static_cast<double>(params.ticks_per_rev)
+              2.0 * kPi * params.wheel_radius / static_cast<double>(params.ticks_per_rev)
           },
           slip_rng_left_{slip_rng_left},
           slip_rng_right_{slip_rng_right}
