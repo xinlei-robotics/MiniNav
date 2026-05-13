@@ -95,24 +95,26 @@ int main(const int argc, char** argv)
             if (rrd_path.has_value())
             {
                 sink.emplace(kApplicationId, *rrd_path);
-                mininav::log::info("Rerun: writing to " + rrd_path->string());
+                log::info("Rerun: writing to " + rrd_path->string());
             }
             else
             {
                 sink.emplace(kApplicationId);
-                mininav::log::info("Rerun: Viewer spawned (gRPC).");
+                log::info("Rerun: Viewer spawned (gRPC).");
             }
+
+            register_v0_statics(*sink, kRobotEntityPath);
         }
         else
         {
-            mininav::log::info("Rerun: disabled by --no-viz.");
+            log::info("Rerun: disabled by --no-viz.");
         }
 
         const RobotModel model;
         const StagedCommandSource command_source;
         Pose2D pose{0.0, 0.0, 0.0};
 
-        mininav::log::info("MiniNav V0 simulation started.");
+        log::info("MiniNav V0 simulation started.");
 
         for (std::size_t i = 0; i < step_count; ++i)
         {
@@ -132,12 +134,12 @@ int main(const int argc, char** argv)
         }
 
         write_csv(trajectory, csv_path);
-        mininav::log::info("Trajectory CSV written to " + csv_path.string());
-        mininav::log::info("MiniNav V0 simulation ended.");
+        log::info("Trajectory CSV written to " + csv_path.string());
+        log::info("MiniNav V0 simulation ended.");
     }
     catch (const std::exception& ex)
     {
-        mininav::log::error(ex.what());
+        log::error(ex.what());
         return 1;
     }
     return 0;

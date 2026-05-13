@@ -16,12 +16,6 @@ export namespace mininav
     class RerunSink
     {
     public:
-        enum class Mode
-        {
-            Spawn,
-            Save,
-        };
-
         explicit RerunSink(std::string_view application_id);
 
         RerunSink(std::string_view application_id, const std::filesystem::path& rrd_path);
@@ -33,12 +27,19 @@ export namespace mininav
         RerunSink(RerunSink&&) noexcept;
         RerunSink& operator=(RerunSink&&) noexcept;
 
-        void set_time(double t_seconds) const noexcept;
+        /// 设置当前帧的时间轴游标. 之后的所有 log 都打在这个时间点.
+        void set_time(double t_seconds);
 
-        void log_pose(std::string_view entity_path, const Pose2D& pose) noexcept;
-        void log_twist(std::string_view entity_path, const Twist2D& twist) noexcept;
-        void log_scalar(std::string_view entity_path, double value) noexcept;
-        void log_axes(std::string_view entity_path, float length = 0.5F) noexcept;
+        // ---- 每帧动态数据 ----
+        void log_pose(std::string_view entity_path, const Pose2D& pose);
+        void log_twist(std::string_view entity_path, const Twist2D& twist);
+        void log_scalar(std::string_view entity_path, double value);
+        void log_axes(std::string_view entity_path, float length = 0.5F);
+        void log_axes_static(std::string_view entity_path, float length = 0.5F);
+
+        void log_trail_point(std::string_view trail_path, double x, double y);
+
+        void clear_trail(std::string_view trail_path);
 
     private:
         struct Impl;
