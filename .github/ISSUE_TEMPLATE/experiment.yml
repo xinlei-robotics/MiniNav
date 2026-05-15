@@ -1,0 +1,64 @@
+name: 🧪 Experiment
+description: An experiment with a hypothesis and a quantitative acceptance threshold
+title: "[Experiment] "
+labels: ["type: experiment"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for experiments that produce a measurable
+        result: parameter sweeps, RMSE evaluations, sim-to-real gap
+        comparisons, planning time benchmarks, etc.
+
+        An experiment without a numeric acceptance threshold is just
+        a script. If you cannot state the threshold up front, this
+        should probably be a Feature issue instead.
+
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: What do we expect to be true, stated as a falsifiable claim?
+      placeholder: |
+        Example: With IMU angular velocity as the only observation,
+        EKF estimate of position reduces RMSE by at least 50% compared
+        to wheel odometry baseline, on a 60-second default-preset
+        simulation across at least 5 seeds.
+    validations:
+      required: true
+
+  - type: textarea
+    id: method
+    attributes:
+      label: Method
+      description: Step-by-step procedure
+      placeholder: |
+        1. Run `sim_v2 --no-viz --seed S --preset default --duration 60`
+           for S ∈ {42, 123, 456, 789, 2026}
+        2. Compute position RMSE of odom_pose and ekf_pose vs truth_pose
+        3. Report mean ± std across the 5 seeds
+    validations:
+      required: true
+
+  - type: textarea
+    id: threshold
+    attributes:
+      label: Acceptance threshold
+      description: The numeric bar this experiment must clear before closing
+      placeholder: |
+        - Mean(EKF RMSE) / Mean(odom RMSE) ≤ 0.5
+        - If not met: investigate Q/R tuning, then re-run before closing
+    validations:
+      required: true
+
+  - type: textarea
+    id: deliverables
+    attributes:
+      label: Deliverables
+      description: Files, plots, tables this experiment produces
+      placeholder: |
+        - `results/v2_rmse_table.md`
+        - `results/v2_rmse_comparison.png`
+        - Findings written into `docs/experiments/v2_ekf_vs_odom.md`
+    validations:
+      required: true

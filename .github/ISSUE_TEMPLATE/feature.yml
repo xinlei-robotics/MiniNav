@@ -1,0 +1,61 @@
+name: ✨ Feature
+description: New functionality, algorithm, or module
+title: "[Feature] "
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for new functionality: algorithms, modules,
+        APIs, visualizations, or any production code addition.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why does this need to exist? What problem does it solve?
+      placeholder: |
+        Reference the version roadmap or design doc if applicable.
+        Example: "V2 needs an EKF predict step to propagate covariance.
+        Math derivation lives in docs/math/ekf.md §2."
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      description: Concrete subtasks as a checklist
+      placeholder: |
+        - [ ] Add class skeleton
+        - [ ] Implement core logic
+        - [ ] Wire into main loop
+        - [ ] Add unit tests
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know this is done?
+      placeholder: |
+        - Unit tests pass: `<test_filter>`
+        - CSV regression diff is empty
+        - Behaves correctly on `<edge case>`
+    validations:
+      required: true
+
+  - type: textarea
+    id: related
+    attributes:
+      label: Related
+      description: Linked issues, PRs, docs, or external references
+      placeholder: |
+        - Depends on: #N
+        - Design doc: `docs/math/ekf.md`
+        - Reference: Thrun, *Probabilistic Robotics* §5.3
+    validations:
+      required: false

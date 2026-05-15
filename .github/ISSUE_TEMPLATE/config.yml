@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Project overview & roadmap
+    url: https://github.com/xinlei-robotics/MiniNav/blob/main/docs/project-overview.md
+    about: Read this before opening an issue about scope or design.
+  - name: 🗺 Version-by-version retrospectives
+    url: https://github.com/xinlei-robotics/MiniNav/tree/main/docs
+    about: V0 / V1 summaries explain why things are the way they are.
+  - name: 🛠 How this project is managed
+    url: https://github.com/xinlei-robotics/MiniNav/blob/main/docs/project-management.md
+    about: Labels, milestones, project board conventions.

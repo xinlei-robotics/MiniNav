@@ -1,34 +1,34 @@
-## Motivation
+<!--
+Thanks for the PR. Keep the summary tight; the engineering content
+belongs in the commits and the linked issue, not duplicated here.
+-->
 
-<!-- Why is this change needed? What problem does it solve? Reference roadmap milestone if applicable. -->
+## Summary
 
-## Changes
+<!-- One paragraph: what does this PR change and why? -->
 
-<!-- List the concrete changes made in this PR. -->
+## Linked issue
 
--
--
--
-
-## Design Decisions
-
-<!-- (Optional but recommended) Key technical choices and trade-offs. Useful for future reference and code review. -->
-
-## Testing
-
-<!-- How was correctness verified? -->
-
-- [ ] Unit tests added/updated
-- [ ] All tests pass locally (`ctest --preset debug`)
-- [ ] Build succeeds with no warnings (`-Werror` enabled)
-- [ ] Manual verification (describe how)
-
-## Visualizations
-
-<!-- (Optional) Rerun screenshots, plots, performance graphs, or trajectory comparisons. -->
-
-## Related
-
-<!-- Link related issues, PRs, or design docs. Use "Closes #N" to auto-close issues on merge. -->
-
+<!-- Use "Closes #N" to auto-close the issue on merge. -->
 Closes #
+
+## Quantitative impact
+
+<!--
+If this PR affects performance, accuracy, build time, or any
+measurable property, state the delta. Otherwise write "N/A".
+
+Examples:
+- EKF RMSE on default preset, 5 seeds: odom 0.42m → ekf 0.18m (-57%)
+- Configure time: 12s → 11s (no significant change)
+- Binary size: +180 KB (Eigen template instantiations for EKF)
+- N/A — pure refactor, no behavioral change
+-->
+
+## Checklist
+
+- [ ] `ctest --preset test-debug` passes
+- [ ] CSV regression diff is empty (or intentional change is documented)
+- [ ] New public APIs have unit tests
+- [ ] Docs updated if behavior or interfaces changed
+- [ ] Strict warnings still pass (`-Wall -Wextra -Wconversion -Werror`)

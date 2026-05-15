@@ -1,0 +1,62 @@
+name: 🧱 Tech debt
+description: A known limitation deliberately deferred — with a trigger condition
+title: "[Tech debt] "
+labels: ["tech-debt"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tech debt is **deferred work we have consciously chosen not to
+        do yet**. It is different from a bug (broken behavior) and
+        different from a feature (new capability).
+
+        A tech-debt issue without a trigger condition is just a wish.
+        The trigger is the contract: "when X happens, this issue
+        becomes actionable."
+
+  - type: textarea
+    id: limitation
+    attributes:
+      label: Current limitation
+      description: What is suboptimal today and why?
+      placeholder: |
+        WheelEncoderModel accumulates real arc length as `double`.
+        At V1 simulation scale (20-60s, v < 1 m/s) precision is fine,
+        but at V6 real-robot scale (tens of minutes) the accumulator
+        may approach `double` precision limits.
+    validations:
+      required: true
+
+  - type: textarea
+    id: trigger
+    attributes:
+      label: Trigger condition
+      description: When does this become actionable?
+      placeholder: |
+        V6 real-robot integration. When the car has been running for
+        more than 10 minutes continuously and trajectory analysis
+        shows anomalies in long-running odometry.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_fix
+    attributes:
+      label: Proposed fix
+      description: One sentence on the intended resolution
+      placeholder: |
+        Switch encoder accumulator state from `double` distance to
+        `int64_t` ticks. Internal state becomes accumulated ticks,
+        not distance.
+    validations:
+      required: false
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: Where is this documented?
+      description: Link to summary doc or design doc where this is mentioned
+      placeholder: |
+        - `docs/v1_summary.md` §7.1
+    validations:
+      required: false
