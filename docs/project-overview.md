@@ -251,7 +251,6 @@ mininav/
 │   │   ├── encoder_model.md        # 编码器物理 + 量化模型
 │   │   └── ekf.md                  # EKF 完整数学推导
 │   └── experiments/
-│       ├── v1_odom_drift.md        # 漂移实验报告
 │       ├── v2_ekf_vs_odom.md       # EKF vs odom 对比
 │       └── v6_sim_to_real_gap.md   # 实车 sim-to-real gap 表
 ├── scripts/                        # Python 后处理

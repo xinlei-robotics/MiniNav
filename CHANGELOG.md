@@ -62,9 +62,7 @@ estimator. Establishes the drift problem that V2's EKF will solve.
 - Python drift-analysis script `scripts/analyze_v1_drift.py`
   producing `results/v1_trajectory.png` and
   `results/v1_drift_over_time.png`
-- Documentation: `docs/v1_summary.md` (V1 retrospective) and
-  `docs/experiments/v1_odom_drift.md` (drift experiment writeup)
-
+- Documentation: `docs/v1_summary.md` (V1 retrospective)
 ### Fixed
 
 - Rerun trail isolation in `viz/rerun_sink.cpp`: per-entity trail

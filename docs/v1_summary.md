@@ -61,8 +61,7 @@ CLI11处理命令行选项;主循环 `sim_v1` 与 `sim_v0` 并存,两者
 - **集成与交付层**:`sim_v1` 主循环把上述四层组装成可执行档;三档
   preset (`low-noise` / `default` / `high-noise`) 一键切换噪声水平;
   Rerun 里三条轨迹 (`cmd_traj` / `truth` / `odom`) 同框显示;Python
-  脚本 `analyze_v1_drift.py` 从 CSV 算出 RMSE 与漂移曲线;实验文档
-  `docs/experiments/v1_odom_drift.md` 作为面试叙事载体。
+  脚本 `analyze_v1_drift.py` 从 CSV 算出 RMSE 与漂移曲线。
 
 ### 1.2 V1 不解决什么
 
