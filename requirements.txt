@@ -1,0 +1,15 @@
+# MiniNav Python dependencies
+#
+# Install:
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+
+# Rerun SDK — pinned to patch because SDK and Viewer share a wire format
+# (a version mismatch will silently break the gRPC connection).
+rerun-sdk==0.31.4
+
+# Drift analysis & static figure generation
+# (scripts/analyze_v1_drift.py)
+numpy>=1.26
+pandas>=2.0
+matplotlib>=3.8

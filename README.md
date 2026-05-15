@@ -3,21 +3,21 @@
 # MiniNav
 
 [![CI](https://github.com/xinlei-robotics/MiniNav/actions/workflows/ci.yml/badge.svg)](https://github.com/xinlei-robotics/MiniNav/actions/workflows/ci.yml)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
+[![CMake](https://img.shields.io/badge/CMake-3.28-064F8C.svg)](https://cmake.org/)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
 
 **Indoor mobile robot localization & navigation system in modern C++.**
 
 From kinematic simulation to a Raspberry Pi 5 + 4WD car indoor navigation
 demo — built incrementally, version by version.
 
-[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
-[![CMake](https://img.shields.io/badge/CMake-3.28-064F8C.svg)](https://cmake.org/)
-[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](LICENSE)
+<img src="results/v1_three_trajectories.gif" alt="MiniNav V1 — three-trajectory 3D replay in Rerun" width="720"/>
 
-<img src="results/traj_v0.png" alt="MiniNav V0 — ideal differential-drive simulation" width="640"/>
-
-*V0: ideal differential-drive simulation, 20 s of staged commands rendered to CSV, Rerun, and a static PNG.*
+*V1, replayed in Rerun's 3D view: command path (green), ground truth
+(blue), and wheel-odometry estimate (orange) starting together and
+drifting apart over 20 s. The orange–blue gap is the problem V2's EKF
+is built to fix.*
 
 </div>
 
@@ -33,56 +33,139 @@ brought onto real hardware.
 
 It answers the three core questions of mobile robot navigation:
 
-| Question | Topic | Core technique |
-|---|---|---|
-| **Where am I?** | Localization | Wheel odometry, IMU, EKF sensor fusion |
-| **Where am I going?** | Planning | Occupancy grid map, A\* global planner |
-| **How do I get there?** | Control | Pure Pursuit path tracking |
+| Question                | Topic        | Core technique                         |
+|-------------------------|--------------|----------------------------------------|
+| **Where am I?**         | Localization | Wheel odometry, IMU, EKF sensor fusion |
+| **Where am I going?**   | Planning     | Occupancy grid map, A\* global planner |
+| **How do I get there?** | Control      | Pure Pursuit path tracking             |
 
-The project is structured as a multi-stage roadmap (V0 → V7), each
+The project is organized as a multi-stage roadmap (V0 → V6), each
 version solving one well-scoped problem and building on the previous one.
-The goal of V0 is **not** to demonstrate a particular algorithm but to
-establish a clean, modular, evolvable codebase on which the harder
-versions can be built without rewrites.
 
-> **Current status: V0 complete.** V1 (sensor noise & odometry) is
-> the next milestone. See [`docs/v0_summary.md`](docs/v0_summary.md)
-> for a deep dive into the V0 design decisions and lessons learned.
+> **Current status: V1 complete.** V2 (EKF sensor fusion) is the next
+> milestone. See [`docs/v1_summary.md`](docs/v1_summary.md) for a deep
+> dive into V1's design decisions, the noise models, and the odometry
+> drift problem.
 
 ---
 
-## V0 highlights
+## Latest milestone — V1: Sensors, noise & odometry drift
 
-What V0 actually delivers, in one screen:
+V1 is the first version of MiniNav that *has something to fix*. V0
+established a clean codebase running an ideal differential-drive robot
+that perfectly executes every command. V1 introduces **two independent
+imperfect channels** on top of that codebase — one at the actuator,
+one at the sensor — and quantifies the resulting drift.
 
-- **Ideal 2D differential-drive kinematics** — first-order Euler
-  integration with explicit `wrap_angle` normalization, exposed as a
-  pure free function so every future component (noisy models, real-car
-  driver, EKF prediction) reuses the same equation.
-- **Versioned simulation state (`SimStateV0`)** — non-inheritance state
-  evolution: future versions add `odom_pose`, `ekf_pose`, covariance
-  matrices as new structs rather than overloading a single base class.
-- **`Trajectory<T>` template + ADL extension points** — adding
-  `SimStateV1` only requires a new `csv_row(SimStateV1)` overload; old
-  V0 code is never modified. This is the project's main bet on
-  Open/Closed Principle in C++.
-- **Dual-track output: CSV + Rerun** — CSV (deterministic, diff-able)
-  serves as a regression baseline; Rerun (interactive, replayable) is
-  the development view. A `--no-viz` mode runs CSV-only for CI.
-- **PIMPL-isolated visualization** — the `viz` static library hides the
-  Rerun SDK behind a `unique_ptr<Impl>`, so neither downstream targets
-  nor compile-time depend on the Rerun headers.
-- **Modern C++ tooling** — C++23 modules (`FILE_SET CXX_MODULES`),
-  Clang 18, CMake 3.28 + Ninja, GoogleTest via `FetchContent`, strict
-  warnings (`-Wall -Wextra -Wconversion -Werror` on Debug).
+<p align="center">
+  <img src="results/v1_trajectory.png" alt="V1 — truth vs odom trajectory" width="80%"/>
+  <img src="results/v1_drift_over_time.png" alt="V1 — drift error over time" width="80%"/>
+</p>
 
-Visualization is intentionally split across three consumers:
+### Two-channel architecture
 
-| Output | Audience | Purpose |
-|---|---|---|
-| `data/traj.csv` | scripts, CI | regression baseline, post-processing |
-| Rerun Viewer | the developer | live replayable inspection |
-| `results/traj_v0.png` | recruiters, README | static publication-grade figure |
+```mermaid
+graph LR
+    cmd[StagedCommandSource] -->|cmd| actuator[ActuatorModel]
+    actuator -->|true_velocity| truth["differential_drive_step<br/>truth channel"]
+    actuator -->|true_velocity| encoder[WheelEncoderModel]
+    truth -->|truth_pose| state[SimStateV1]
+    encoder -->|EncoderTicks| odometry[WheelOdometry]
+    odometry -->|odom_pose| state
+    state -->|append| traj["Trajectory&lt;SimStateV1&gt;"]
+    state -.->|log_to_rerun| rerun[Rerun]
+    traj -->|write_csv_with_metadata| csv[traj_v1.csv]
+
+    style state fill:#0a4f3f,color:#fff
+    style truth fill:#1f4f1f,color:#fff
+    style odometry fill:#1f3f5c,color:#fff
+```
+
+The truth channel and the estimation channel use **the same**
+`differential_drive_step` integrator. Any divergence between
+`truth_pose` and `odom_pose` therefore comes entirely from differences
+between their inputs — not from numerical asymmetry between two
+parallel pipelines. This means the drift is *causally attributable* to
+sensor and actuator imperfections, exactly the property a probabilistic
+filter needs.
+
+### What V1 actually contains
+
+- **Velocity Motion Model** (Thrun, *Probabilistic Robotics* §5.3) for
+  actuator noise: variance is `α₁v² + α₂ω²`, so a stationary command
+  has zero variance — no static drift, unlike naive additive Gaussian.
+- **Physically causal encoder model**: inverse kinematics → multiplicative
+  slip noise → accumulated arc length → quantize to integer ticks →
+  differential output. The accumulate-then-diff pattern correctly handles
+  low-speed undersampling (where one tick can take many simulation steps
+  to register).
+- **`WheelOdometry` as a dependency-inverted estimator**. Its
+  `update(EncoderTicks, dt)` signature has no knowledge of where the
+  ticks came from. On the V6 real car, a Pi 5 GPIO interrupt counter
+  will feed the *same* `EncoderTicks` struct — the estimator code does
+  not change.
+- **`RngFactory` with per-tag seed derivation** (FNV-1a hash). Each
+  noise source owns an independent RNG, so adding a new noise source
+  in a future PR does not shift the random sequence of existing ones.
+  `--seed` controls every stochastic decision in the simulation.
+- **Three preset noise levels** (`low-noise` / `default` / `high-noise`)
+  swappable via `--preset`. The `default` preset is tuned so drift is
+  clearly visible in 20 s without being unrealistic.
+- **Self-documenting CSV output**. Every `traj_v1.csv` carries header
+  comments embedding `seed`, `preset`, `dt`, `duration`, and
+  `generated_at` — any saved trajectory can be exactly re-run.
+
+V1 is where MiniNav stops being a textbook toy and starts looking like
+a real estimation problem.
+
+---
+
+## Roadmap
+
+| Version | Theme                    | Key deliverables                                                                                   | Status |
+|---------|--------------------------|----------------------------------------------------------------------------------------------------|--------|
+| **V0**  | Simulation scaffolding   | Differential-drive kinematics, `Trajectory<T>`, CSV/Rerun dual output, GoogleTest, strict warnings | ✅      |
+| **V1**  | Sensors, noise, odometry | Velocity Motion Model, encoder slip + quantization, `WheelOdometry`, drift experiments             | ✅      |
+| **V2**  | EKF state estimation     | IMU model, EKF predict + update, RMSE quantification vs odom baseline                              | → next |
+| **V3**  | Path planning            | Occupancy grid map, A\* global planner                                                             |        |
+| **V4**  | Control + ROS 2          | Pure Pursuit tracker, packaged as ROS 2 nodes                                                      |        |
+| **V5**  | Full simulation loop     | Goal-pose → plan → track → arrive demo in ROS 2                                                    |        |
+| **V6**  | Real-world deploy        | Sim-to-real on Pi 5 + 4WD car, indoor navigation video                                             |        |
+
+---
+
+## Engineering foundations
+
+Capabilities established in V0 and reused by every subsequent version.
+
+- **C++23 modules** via CMake 3.28 `FILE_SET CXX_MODULES`. Module
+  interface files (`.ixx`) export only the API surface; heavy headers
+  like Eigen stay in implementation files or global module fragments,
+  keeping the module scan cost manageable.
+- **ADL-based extension points**. `csv_row(T)` and `log_to_rerun(T, ...)`
+  are free functions resolved by Argument-Dependent Lookup. Adding a
+  new `SimStateV2` only requires writing new overloads in new files —
+  V0 and V1 code is never touched. This is the Open/Closed Principle
+  expressed in C++ at its most natural.
+- **Versioned state structs**. `SimStateV0`, `SimStateV1`, … evolve by
+  addition rather than inheritance. State is plain data; the `Trajectory`
+  container is a class template so each version reuses the same
+  container code.
+- **PIMPL-isolated visualization**. The `viz` static library hides the
+  Rerun SDK behind `unique_ptr<Impl>`. Downstream targets do not
+  transitively `#include <rerun.hpp>` — neither symbols nor compile time
+  leak through.
+- **Dual-track output**. CSV is deterministic and diff-able (regression
+  baseline + Python post-processing); Rerun is interactive (live
+  development); static PNGs are the publication artifact. Each format
+  has a different reader and a different job.
+- **Strict warning policy**. `-Wall -Wextra -Wconversion -Werror` on
+  Debug, with `SYSTEM` exemption for third-party headers — *strict on
+  our code, permissive on theirs*.
+- **Modern toolchain**. Clang 18, CMake 3.28 + Ninja, CLI11 / GoogleTest /
+  Rerun SDK fetched via `FetchContent`, `gtest_discover_tests` for
+  per-test CTest registration, `compile_commands.json` for clangd
+  integration.
 
 ---
 
@@ -90,54 +173,52 @@ Visualization is intentionally split across three consumers:
 
 ```
 ┌─────────────────────────────────────────────┐
-│ Layer 5: Real Robot Deployment              │  Raspberry Pi 5 + 4WD car  (V6+)
+│ Layer 5: Real Robot Deployment              │  Raspberry Pi 5 + 4WD car  (V6)
 ├─────────────────────────────────────────────┤
 │ Layer 4: Motion Control                     │  Pure Pursuit / PID        (V4)
 ├─────────────────────────────────────────────┤
 │ Layer 3: Global Planning                    │  Occupancy grid + A*       (V3)
 ├─────────────────────────────────────────────┤
-│ Layer 2: Localization & State Estimation    │  Odom + IMU + EKF          (V1, V2)
+│ Layer 2: Localization & State Estimation    │  Odom + IMU + EKF          (V1 ✅, V2)
 ├─────────────────────────────────────────────┤
-│ Layer 1: Kinematic Simulation               │  Differential-drive model  (V0 ✓)
+│ Layer 1: Kinematic Simulation               │  Differential-drive model  (V0 ✅)
 └─────────────────────────────────────────────┘
 ```
 
-V0 implements Layer 1 in full and provides the data, I/O, and
-visualization scaffolding that the upper layers will reuse.
+### Module dependencies (after V1)
 
-### V0 module layout
+```mermaid
+graph TD
+    sim_v1[sim_v1] --> core[core]
+    sim_v1 --> sensors[sensors]
+    sim_v1 --> localization[localization]
+    sim_v1 --> viz[viz]
+    sim_v1 --> cli11[CLI11]
 
+    sim_v0[sim_v0] --> core
+    sim_v0 --> viz
+
+    sensors --> core
+    localization --> core
+    viz --> core
+    viz --> rerun[Rerun SDK]
+    core --> eigen[Eigen3]
+
+    style core fill:#0a4f3f,color:#fff
+    style sensors fill:#1f4f1f,color:#fff
+    style localization fill:#1f3f5c,color:#fff
+    style viz fill:#3a1f5c,color:#fff
+    style sim_v1 fill:#5c4a1f,color:#fff
+    style sim_v0 fill:#3a2f1a,color:#fff
 ```
-src/
-├── core/                          # Static lib — no Rerun dependency
-│   ├── types.{ixx,cpp}            # Pose2D, Twist2D, SimStateV0
-│   ├── math.ixx                   # wrap_angle, kPi
-│   ├── kinematics.{ixx,cpp}       # differential_drive_step (free function)
-│   ├── robot_model.{ixx,cpp}      # RobotModel  (thin wrapper, future polymorphism)
-│   ├── command_source.ixx +       # CommandSource base
-│   │   staged_command_source.cpp  # StagedCommandSource (V0 only impl)
-│   ├── trajectory.ixx             # Trajectory<T> template
-│   ├── csv_format.{ixx,cpp}       # csv_header / csv_row(SimStateV0)
-│   ├── csv_writer.ixx             # write_csv<T> via ADL
-│   └── logger.ixx
-├── viz/                           # Static lib — depends on Rerun (PIMPL'd)
-│   ├── rerun_sink.{ixx,cpp}       # RerunSink
-│   └── sim_state_log.{ixx,cpp}    # log_to_rerun(SimStateV0, ...)
-└── apps/
-    └── sim_v0_main.cpp            # CLI parsing + main loop
-```
 
-Module dependency graph:
+`sensors` and `localization` are **independent of each other** — they
+only communicate through the `EncoderTicks` plain struct, passed through
+the `sim_v1` main loop. This dependency inversion is what makes V6 work
+without modifying the estimator: real GPIO ticks plug into the same
+struct the simulated encoder produces.
 
-```
-sim_v0 ──▶ core ──▶ Eigen3
-   │
-   └────▶ viz ───┬──▶ core
-                 └──▶ Rerun SDK (hidden behind PIMPL)
-
-tests ──▶ core
-       └──▶ GoogleTest
-```
+`sim_v0` is preserved as a regression baseline; V1 does not replace it.
 
 ---
 
@@ -145,90 +226,102 @@ tests ──▶ core
 
 ### Prerequisites
 
-- Linux (or WSL2) — currently tested on Ubuntu 24.04
+- Linux (or WSL 2) — tested on Ubuntu 24.04
 - Clang 18+ with C++23 modules support
 - CMake 3.28+, Ninja
 - Eigen3 ≥ 3.4 (`sudo apt install libeigen3-dev`)
-- Python venv with `rerun-sdk==0.31.4` for the Rerun Viewer:
+- Python venv with `rerun-sdk==0.31.4`:
 
   ```bash
   python3 -m venv .venv
-  .venv/bin/pip install rerun-sdk==0.31.4
+  .venv/bin/pip install -r requirements.txt
   ```
 
-GoogleTest and the Rerun SDK are fetched automatically via `FetchContent`.
+CLI11, GoogleTest, and the Rerun SDK are fetched automatically via
+`FetchContent`.
 
 ### Build
 
 ```bash
-# First-time configure
+# First-time configure (downloads Rerun SDK on first run)
 cmake --preset clang18-debug
 
-# Incremental builds afterwards
+# Incremental builds
 cmake --build --preset build-debug -j
 
-# Run unit tests
+# Run all tests (core / sensors / localization)
 ctest --preset test-debug --output-on-failure
 ```
 
-### Run the simulation
-
-V0 supports three runtime modes:
+### Run the V1 simulation
 
 ```bash
-# Mode 1 — Spawn:  auto-launches the Rerun Viewer, streams data via gRPC
-./build/clang18-debug/sim_v0
+# Default: random seed, default preset, spawns Rerun Viewer via gRPC
+./build/clang18-debug/sim_v1
 
-# Mode 2 — Save:   writes a .rrd recording, replay later with `rerun results/v0.rrd`
-./build/clang18-debug/sim_v0 --rrd results/v0.rrd
+# Fully reproducible run (the seed prints to stdout when omitted)
+./build/clang18-debug/sim_v1 --seed 42 --preset default
 
-# Mode 3 — CSV-only:  used in CI and regression diff
-./build/clang18-debug/sim_v0 --no-viz
+# Cycle through the three noise levels
+./build/clang18-debug/sim_v1 --preset low-noise
+./build/clang18-debug/sim_v1 --preset default
+./build/clang18-debug/sim_v1 --preset high-noise
+
+# Save a .rrd recording, replay later with `rerun results/v1.rrd`
+./build/clang18-debug/sim_v1 --rrd results/v1.rrd
+
+# Headless / CI mode — only writes data/traj_v1.csv
+./build/clang18-debug/sim_v1 --no-viz
 ```
 
-All modes write `data/traj.csv`. Modes 1 and 2 additionally produce
-Rerun output. `--rrd` and `--no-viz` are mutually exclusive.
-
-### Generate the static PNG
+### Generate drift figures
 
 ```bash
 source .venv/bin/activate
-pip install matplotlib pandas numpy
-python scripts/plot_trajectory.py \
-    --input data/traj.csv \
-    --output results/traj_v0.png
+python scripts/analyze_v1_drift.py
+```
+
+Produces `results/v1_trajectory.png` and `results/v1_drift_over_time.png`,
+and prints final / peak position error and final yaw error to stdout.
+
+### V0 simulation (preserved as regression baseline)
+
+```bash
+./build/clang18-debug/sim_v0 --no-viz   # writes data/traj.csv
 ```
 
 ---
 
 ## Visualization
 
-Live development view (Rerun Viewer, 4-pane blueprint):
+The Rerun Viewer is the primary live-development surface. The header
+animation at the top of this README is a screen capture of the 3D view
+during a `default`-preset run; locally, you can scrub, pause, change
+the camera, toggle individual entities on/off, and inspect the
+underlying time series.
 
-<img src="results/rerun_v0.png" alt="MiniNav V0 — Rerun Viewer 4-pane layout" width="780"/>
+Entity paths logged by `sim_v1`:
 
-The layout shows, left to right:
+| Entity path                   | Meaning                                               |
+|-------------------------------|-------------------------------------------------------|
+| `/world/robot/cmd_traj/trail` | Where a perfect executor would go (≡ V0 trajectory)   |
+| `/world/robot/truth/trail`    | Actual ground truth (after actuator noise)            |
+| `/world/robot/odom/trail`     | Wheel-odometry estimate (after the full sensor chain) |
 
-- 2D top-down trail of the robot's trajectory
-- 3D scene with world frame and live robot body frame
-- linear velocity command `v(t)`
-- angular velocity command `ω(t)`
-
-The same 20 s simulation, rendered to a static figure for sharing
-(see top of this README).
+Additional scalar time series are logged for diagnostics:
+`cmd_v` / `cmd_w`, `true_velocity_v` / `true_velocity_w`, encoder
+`dticks_l` / `dticks_r`, and direct `error/position` + `error/yaw`
+channels.
 
 ---
 
 ## Documentation
 
-In-depth design notes, math derivations, and per-version retrospectives
-live under `docs/`:
+Per-version retrospectives and design notes live under `docs/`:
 
-- [`docs/project-overview.md`](docs/project-overview.md) — full
-  vision, V0–V7 roadmap, and technology choices
-- [`docs/v0_summary.md`](docs/v0_summary.md) — V0 retrospective:
-  every non-trivial design decision, its alternatives, and what was
-  learned
+- [`docs/project-overview.md`](docs/project-overview.md) — full vision, V0 → V6 roadmap, technology choices
+- [`docs/v0_summary.md`](docs/v0_summary.md) — V0 retrospective: scaffolding design, alternatives, lessons learned
+- [`docs/v1_summary.md`](docs/v1_summary.md) — V1 retrospective: noise modelling, encoder physics, RNG design, drift analysis
 
 ---
 
