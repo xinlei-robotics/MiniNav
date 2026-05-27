@@ -1,6 +1,8 @@
-# 卡尔曼滤波与扩展卡尔曼滤波 —— 数学笔记
+# 卡尔曼滤波（KF）与扩展卡尔曼滤波（EKF）算法
 
-> 本笔记基于 Thrun 等《Probabilistic Robotics》第 2、3 章整理，覆盖从概率论基础到 EKF 推导的完整脉络。配套项目：MiniNav V2 阶段（5D 状态向量 EKF 传感器融合）。
+
+> **适用版本**：MiniNav V2  
+> **参考文献**：Thrun, Burgard, Fox. *Probabilistic Robotics*, Ch. 1.1 — 1.3
 
 ---
 
@@ -804,6 +806,78 @@ $$
 
 > 至此完成 Kalman Filter 算法 5 个递推式的全部推导。
 
+### 7.11 协方差更新的 Joseph 形式
+
+7.10 节得到的协方差更新
+
+$$
+\Sigma_t = (I - K_t H_t)\,\bar\Sigma_t
+$$
+
+存在一个等价的写法，称为 **Joseph 形式**：
+
+$$
+\boxed{\;\Sigma_t = (I - K_t H_t)\,\bar\Sigma_t\,(I - K_t H_t)^\top + K_t\, Q_t\, K_t^\top\;}
+$$
+
+#### 7.11.1 等价性证明
+
+从 Joseph 形式出发，记 $S_t = H_t \bar\Sigma_t H_t^\top + Q_t$（新息协方差），展开：
+
+$$
+\begin{aligned}
+\Sigma_t^{\text{Joseph}}
+&= (I - K_t H_t)\,\bar\Sigma_t\,(I - H_t^\top K_t^\top) + K_t Q_t K_t^\top \\
+&= (I - K_t H_t)\,\bar\Sigma_t - (I - K_t H_t)\,\bar\Sigma_t H_t^\top K_t^\top + K_t Q_t K_t^\top \\
+&= \underbrace{(I - K_t H_t)\,\bar\Sigma_t}_{\text{标准形式}} \;-\; \bar\Sigma_t H_t^\top K_t^\top + K_t H_t \bar\Sigma_t H_t^\top K_t^\top + K_t Q_t K_t^\top \\
+&= (I - K_t H_t)\,\bar\Sigma_t \;-\; \bar\Sigma_t H_t^\top K_t^\top + K_t\,\underbrace{(H_t \bar\Sigma_t H_t^\top + Q_t)}_{=\,S_t}\,K_t^\top \\
+&= (I - K_t H_t)\,\bar\Sigma_t \;-\; \bar\Sigma_t H_t^\top K_t^\top + K_t S_t K_t^\top
+\end{aligned}
+$$
+
+现在代入最优卡尔曼增益（7.9 节结论，EKF的结果中用 $H_t$ 替换 $C_t$ ）：
+
+$$
+K_t = \bar\Sigma_t H_t^\top S_t^{-1} \quad\Longrightarrow\quad K_t S_t = \bar\Sigma_t H_t^\top
+$$
+
+两边右乘 $K_t^\top$：
+
+$$
+K_t S_t K_t^\top = \bar\Sigma_t H_t^\top K_t^\top
+$$
+
+因此最后两项**恰好相消**：
+
+$$
+-\,\bar\Sigma_t H_t^\top K_t^\top + K_t S_t K_t^\top = 0
+$$
+
+代回得：
+
+$$
+\Sigma_t^{\text{Joseph}} = (I - K_t H_t)\,\bar\Sigma_t
+$$
+
+#### 7.11.2 Joseph 形式的结构性安全
+
+在浮点运算下，标准形式 $(I - K_t H_t)\,\bar\Sigma_t$ 有两个结构性弱点：
+
+1. **不显式对称**。标准形式是两个一般矩阵的乘积，输出在浮点累积下会出现和积累 $\Sigma_t \neq \Sigma_t^\top$ 的小量偏差。
+2. **不显式半正定**。若 $K_t$ 因为 $S_t$ 病态、$Q_t$ 估计偏小或 Jacobian 误差而**偏离最优值**，标准形式可能直接产生负特征值。
+
+Joseph 形式是**结构性安全**的：
+
+$$
+\Sigma_t = \underbrace{M \bar\Sigma_t M^\top}_{\text{对称 PSD}} + \underbrace{K_t Q_t K_t^\top}_{\text{对称 PSD}},\qquad M := I - K_t H_t
+$$
+
+只要 $\bar\Sigma_t$ 和 $Q_t$ 为对称 PSD，输出就**结构性保证**为对称 PSD，且这一性质**与 $K_t$ 是否最优无关**：
+
+- EKF 中的 $H_t$ 来自 Jacobian 线性化，本身就是近似；
+- 当线性化误差较大时，"由近似的 $H_t, G_t$ 计算出的 $K_t$" 已经不是真正意义下的最优增益；
+- 在这种"近似 $K_t$"下，标准形式不再保证 PSD，而 Joseph 形式仍然保证。
+
 ---
 
 ## 8. 扩展卡尔曼滤波器（EKF）
@@ -884,6 +958,10 @@ K_t &= \bar\Sigma_t H_t^\top (H_t \bar\Sigma_t H_t^\top + Q_t)^{-1} \\
 \Sigma_t &= (I - K_t H_t) \bar\Sigma_t
 \end{aligned}
 $$
+
+$\Sigma_t$ 的 Joseph 形式：
+
+$$\Sigma_t = (I - K_t H_t)\,\bar\Sigma_t\,(I - K_t H_t)^\top + K_t\, Q_t\, K_t^\top$$
 
 ### 8.4 EKF 与 KF 的对照
 
