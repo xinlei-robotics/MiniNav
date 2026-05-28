@@ -13,4 +13,7 @@ export namespace mininav
 
     [[nodiscard]] std::string csv_header(const SimStateV1&);
     [[nodiscard]] std::string csv_row(const SimStateV1& record);
+
+    [[nodiscard]] std::string csv_header(const SimStateV2&);
+    [[nodiscard]] std::string csv_row(const SimStateV2& record);
 }
