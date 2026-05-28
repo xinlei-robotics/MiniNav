@@ -56,6 +56,19 @@ target_compile_definitions(sim_v1 PRIVATE
 mininav_set_warnings(sim_v1)
 
 # ------------------------------------------------------------------
+# 目标: sim_v2
+# ------------------------------------------------------------------
+add_executable(sim_v2 src/apps/sim_v2_main.cpp)
+
+target_link_libraries(sim_v2 PRIVATE core viz sensors localization CLI11::CLI11)
+
+target_compile_definitions(sim_v2 PRIVATE
+        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+mininav_set_warnings(sim_v2)
+
+# ------------------------------------------------------------------
 # 测试
 # ------------------------------------------------------------------
 enable_testing()

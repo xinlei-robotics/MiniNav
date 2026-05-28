@@ -54,13 +54,15 @@ gtest_discover_tests(sensors_tests
 # ------------------------------------------------------------------
 add_executable(localization_tests
         localization/wheel_odometry_tests.cpp
+        localization/ekf_predict_tests.cpp
+        localization/ekf_jacobian_finite_diff_tests.cpp
 )
 
 target_link_libraries(localization_tests
         PRIVATE
         core
         localization
-        GTest::gtest_main          # 与 sensors_tests 用同一目标名
+        GTest::gtest_main
 )
 
 set_property(TARGET localization_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
