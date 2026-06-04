@@ -38,7 +38,7 @@ namespace mininav
         return os.str();
     }
 
-    [[nodiscard]] std::string csv_header(const SimStateV1&)
+    std::string csv_header(const SimStateV1&)
     {
         return "t,"
             "cmd_v,cmd_w,"
@@ -48,7 +48,7 @@ namespace mininav
             "odom_x,odom_y,odom_yaw";
     }
 
-    [[nodiscard]] std::string csv_row(const SimStateV1& record)
+    std::string csv_row(const SimStateV1& record)
     {
         std::ostringstream os;
         configure_stream(os);
@@ -83,6 +83,7 @@ namespace mininav
             "true_v,true_w,"
             "truth_x,truth_y,truth_yaw,"
             "enc_dl,enc_dr,"
+            "imu_omega,"
             "odom_x,odom_y,odom_yaw,"
             "ekf_x,ekf_y,ekf_yaw,ekf_v,ekf_omega,"
             "ekf_sigma_xx,ekf_sigma_yy,ekf_sigma_xy,"
@@ -101,6 +102,7 @@ namespace mininav
             << record.truth_pose.yaw() << ','
             << record.enc_dticks.left << ','
             << record.enc_dticks.right << ','
+            << record.imu_omega << ','
             << record.odom_pose.x() << ','
             << record.odom_pose.y() << ','
             << record.odom_pose.yaw() << ','
