@@ -1,6 +1,7 @@
 module;
 
 #include <Eigen/Core>
+
 #include <utility>
 
 export module mininav.localization.ekf;
@@ -104,7 +105,48 @@ export namespace mininav
         {
         }
 
+        // -----------------------------------------------------------------------
+        // predict: 一步预测
+        //   μ̄ = g(μ)               (θ 推进后 wrap 回 (-π, π])
+        //   Σ̄ = G·Σ·Gᵀ + Q         (Thrun: Σ̄ₜ = Gₜ·Σₜ₋₁·Gₜᵀ + Rₜ, 此处 R↔Q)
+        // -----------------------------------------------------------------------
         void predict(double dt);
+
+        // -----------------------------------------------------------------------
+        // update_encoder: encoder 观测的 Kalman update。
+        //
+        // encoder 观测隐状态 (v, ω) —— 观测模型 z = H·x + 噪声, 其中
+        //   H = [[0, 0, 0, 1, 0],
+        //        [0, 0, 0, 0, 1]]    (选出 v、ω 两行)
+        // 标准 Kalman update:
+        //   y = z − H·μ̄
+        //   S = H·Σ̄·Hᵀ + R_meas
+        //   K = Σ̄·Hᵀ·S⁻¹
+        //   μ = μ̄ + K·y       (θ wrap 回 (-π, π])
+        //   Σ = (I−K·H)·Σ̄·(I−K·H)ᵀ + K·R·Kᵀ
+        //
+        // 参数:
+        //   z      = (v̂, ω̂), 由 decode_encoder 从 EncoderTicks 解码而来
+        //   R_meas = 2×2 观测噪声, 由 encoder_noise_covariance 从物理参数推导
+        // EKF 在此传感器无关: 它只接受 (z, R), 不关心 z 来自 encoder 还是别处。
+        // -----------------------------------------------------------------------
+        void update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
+
+        // -----------------------------------------------------------------------
+        // update_imu: IMU观测的 Kalman update。
+        //
+        //测量模型:
+        //   z_imu = ω + N(0, R_imu)
+        //   H_imu = [0, 0, 0, 0, 1]
+        //
+        // Kalman update:
+        //   y = z − μ̄(ω)
+        //   S = Σ̄(ω,ω) + R_imu
+        //   K = Σ̄·Hᵀ·S⁻¹
+        //   μ = μ̄ + K·y
+        //   Σ = (I−K·H)·Σ̄·(I−K·H)ᵀ + K·R·Kᵀ
+        // -----------------------------------------------------------------------
+        void update_imu(double z, double R_imu);
 
         [[nodiscard]] const EkfState5& state() const noexcept { return state_; }
         [[nodiscard]] const Vec5& mu() const noexcept { return state_.mu; }
