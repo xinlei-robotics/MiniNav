@@ -32,6 +32,7 @@ gtest_discover_tests(core_tests
 add_executable(sensors_tests
         sensors/actuator_model_tests.cpp
         sensors/wheel_encoder_tests.cpp
+        sensors/imu_model_tests.cpp
 )
 
 target_link_libraries(sensors_tests
@@ -56,11 +57,16 @@ add_executable(localization_tests
         localization/wheel_odometry_tests.cpp
         localization/ekf_predict_tests.cpp
         localization/ekf_jacobian_finite_diff_tests.cpp
+        localization/encoder_observation_tests.cpp
+        localization/ekf_encoder_update_tests.cpp
+        localization/ekf_imu_update_tests.cpp
+        localization/ekf_fusion_rmse_tests.cpp
 )
 
 target_link_libraries(localization_tests
         PRIVATE
         core
+        sensors
         localization
         GTest::gtest_main
 )
