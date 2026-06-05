@@ -6,13 +6,13 @@ export module mininav.localization.ekf_state;
 
 export namespace mininav
 {
-    using Vec5 = Eigen::Vector<double, 5>;
-    using Mat5 = Eigen::Matrix<double, 5, 5>;
+    using Vec6 = Eigen::Vector<double, 6>;
+    using Mat6 = Eigen::Matrix<double, 6, 6>;
 
     // ---------------------------------------------------------------------------
-    // StateIdx: 5D 状态向量各分量的下标
+    // StateIdx: 6D 状态向量各分量的下标
     //
-    //   x = [ px, py, θ, v, ω ]^T
+    //   x = [ px, py, θ, v, ω, b_ω ]^T
     // ---------------------------------------------------------------------------
     enum StateIdx : int
     {
@@ -21,20 +21,21 @@ export namespace mininav
         kTheta = 2,
         kV = 3,
         kOmega = 4,
+        kBiasOmega = 5,
     };
 
-    inline constexpr int kStateDim = 5;
+    inline constexpr int kStateDim = 6;
 
     // ---------------------------------------------------------------------------
-    // EkfState5: 一个高斯置信(belief)的完整描述 —— 均值 + 协方差。
+    // EkfState6: 一个高斯置信(belief)的完整描述 —— 均值 + 协方差。
     //
     // 采用 Thrun《Probabilistic Robotics》约定:
     //   mu    ↔ μ   (state mean)
     //   Sigma ↔ Σ   (state covariance)
     // ---------------------------------------------------------------------------
-    struct EkfState5
+    struct EkfState6
     {
-        Vec5 mu{Vec5::Zero()};
-        Mat5 Sigma{Mat5::Identity()};
+        Vec6 mu{Vec6::Zero()};
+        Mat6 Sigma{Mat6::Identity()};
     };
 }

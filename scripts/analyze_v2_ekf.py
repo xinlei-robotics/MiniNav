@@ -22,6 +22,10 @@ mode = encoder+imu:
       fused 与 odom 的差距就是 IMU 的贡献。
   - results/v2_fusion_rmse_over_time.png  RMSE(truth, odom) 与 RMSE(truth, ekf)
       时间序列, 直观展示 fused 在转弯段开始后误差不再发散。
+  - results/v2_bias_learning.png:
+      上图 b_ω 估计 + ±2σ 带 + 真值参考线(由 preset 恢复), 几秒内收敛到真值;
+      下图 Σ_bb 从无信息先验(1e-2)对数坐标下塌缩 —— encoder+IMU 让 bias 可观测
+      的最直观证据(state augmentation 的"招牌图")。
 
 无论哪种模式都打印 stdout summary。
 
@@ -43,6 +47,24 @@ from matplotlib.patches import Ellipse
 def wrap_to_pi(angle: np.ndarray) -> np.ndarray:
     """规范化到 (-pi, pi], 与 C++ 端 atan2(sin, cos) trick 一致。"""
     return np.arctan2(np.sin(angle), np.cos(angle))
+
+
+# 各 preset 注入的常数gyro bias 真值, 镜像 sim_v2_main.cpp 的 V2Preset.imu_bias_init。
+# ⚠ 这是 Python 侧对 C++ 常量的手工镜像, 存在耦合: 改了 C++ preset 必须同步这里。
+#   更稳健的做法是让 C++ 把真值作为一列(如 imu_bias_true)写进 CSV, 分析脚本就
+#   完全不必知道 preset 表 —— 见文件末尾 main() 上方的说明。
+# 仅在 bias 为常数(imu_bias_rw == 0, 即所有出厂 preset)时, 真值可由 preset 名恢复;
+# 若用了漂移 bias, 此值只代表初值, recover 后果由调用方决定是否使用。
+_PRESET_TRUE_BIAS: dict[str, float] = {
+    "low-noise": 0.01,
+    "default": 0.02,
+    "high-noise": 0.03,
+}
+
+
+def recover_true_bias(metadata: dict[str, str]) -> float | None:
+    """从 CSV 元信息里的 preset 名恢复常数 gyro bias 真值; 未知 preset 返回 None。"""
+    return _PRESET_TRUE_BIAS.get(metadata.get("preset", ""))
 
 
 def parse_metadata(path: Path) -> dict[str, str]:
@@ -136,9 +158,9 @@ def plot_growth(df: pd.DataFrame, metadata: dict[str, str],
                 out_path: Path) -> None:
     fig, (ax_tr, ax_eig) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
 
-    # trace(Σ) = 全部 5 个对角项之和(总不确定性的标量摘要)
+    # trace(Σ) = 全部 6 个对角项之和(总不确定性的标量摘要; PR4 起含 bias 维 σ_bb)
     trace_sigma = (df["ekf_sigma_xx"] + df["ekf_sigma_yy"] + df["ekf_sigma_thth"]
-                   + df["ekf_sigma_vv"] + df["ekf_sigma_ww"])
+                   + df["ekf_sigma_vv"] + df["ekf_sigma_ww"] + df["ekf_sigma_bb"])
     ax_tr.plot(df["t"], trace_sigma, color="#d62728", linewidth=1.6)
     ax_tr.set_ylabel("trace(Σ)")
     ax_tr.set_title("Total covariance trace — monotone, unbounded")
@@ -247,7 +269,7 @@ def plot_covariance_split(df: pd.DataFrame, metadata: dict[str, str],
 
 def plot_fusion_trajectory(df: pd.DataFrame, metadata: dict[str, str],
                            out_path: Path) -> None:
-    """PR3: truth / odom / ekf-fused 三轨迹叠加。fused 应明显贴近 truth。"""
+    """truth / odom / ekf-fused 三轨迹叠加。fused 应明显贴近 truth。"""
     fig, ax = plt.subplots(figsize=(9, 8))
 
     ax.plot(df["truth_x"], df["truth_y"],
@@ -294,7 +316,7 @@ def plot_fusion_trajectory(df: pd.DataFrame, metadata: dict[str, str],
 
 def plot_fusion_rmse_over_time(df: pd.DataFrame, metadata: dict[str, str],
                                out_path: Path) -> None:
-    """PR3: 累积 RMSE(truth, odom) vs RMSE(truth, ekf-fused) 时间序列。"""
+    """累积 RMSE(truth, odom) vs RMSE(truth, ekf-fused) 时间序列。"""
     # 累积 RMSE 用滑窗会更平滑, 但用 prefix RMSE 更直观地展示"误差长期累积"。
     dx_odom = df["odom_x"] - df["truth_x"]
     dy_odom = df["odom_y"] - df["truth_y"]
@@ -342,6 +364,54 @@ def plot_fusion_rmse_over_time(df: pd.DataFrame, metadata: dict[str, str],
     plt.close(fig)
 
 
+def plot_bias_learning(df: pd.DataFrame, metadata: dict[str, str],
+                       out_path: Path) -> None:
+    """gyro bias 在线估计 —— 估计值收敛 + 协方差 Σ_bb 塌缩。
+
+    这是 state augmentation 最直观的证据: b_ω 从无信息先验出发, 在 encoder+IMU
+    双传感器把它变得【可观测】之后几秒内收敛到真值, Σ_bb 随之从 1e-2 量级塌缩。
+    镜像了 sim_v2_main 在 Rerun Time Series 里画的 /plots/bias_omega/{ekf,truth}。
+    """
+    t = df["t"]
+    bias_est = df["ekf_bias_omega"]
+    sigma_bb = df["ekf_sigma_bb"]
+    std_bb = np.sqrt(sigma_bb.clip(lower=0.0))  # ±σ 带宽; clip 防极小负浮点
+
+    fig, (ax_est, ax_cov) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    # --- 上: 估计值 + ±2σ 带 + 真值参考线 ---
+    ax_est.plot(t, bias_est, color="#2ca02c", linewidth=1.8, label="ekf estimate")
+    ax_est.fill_between(t, bias_est - 2.0 * std_bb, bias_est + 2.0 * std_bb,
+                        color="#2ca02c", alpha=0.18, label="±2σ band")
+    true_bias = recover_true_bias(metadata)
+    if true_bias is not None:
+        ax_est.axhline(true_bias, color="#d62728", linewidth=1.6, linestyle="--",
+                       label=f"true bias = {true_bias:.3f} rad/s")
+    ax_est.axhline(0.0, color="gray", linewidth=0.8, alpha=0.5)  # 先验起点 b₀ = 0
+    ax_est.set_ylabel("gyro bias  b_ω  [rad/s]")
+    ax_est.grid(True, alpha=0.3)
+    ax_est.legend(loc="best")
+    ax_est.set_title("Gyro bias estimate — converges once encoder + IMU make it observable")
+
+    # --- 下: Σ_bb 塌缩(对数坐标) ---
+    ax_cov.plot(t, sigma_bb, color="#9467bd", linewidth=1.8)
+    ax_cov.set_yscale("log")
+    ax_cov.set_ylabel("bias covariance\nΣ_bb  [(rad/s)²]")
+    ax_cov.set_xlabel("time [s]")
+    ax_cov.grid(True, alpha=0.3, which="both")
+    ax_cov.set_title("Bias covariance — collapses from the uninformative prior (1e-2)")
+
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    fig.suptitle(
+        f"MiniNav V2 — gyro bias state augmentation (PR4)\n"
+        f"preset = {preset}, seed = {seed}")
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
 def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
     mode = metadata.get("mode", "predict-only")
     print("=" * 64)
@@ -352,7 +422,7 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
     print("-" * 64)
 
     if mode == "encoder+imu":
-        # PR3: 报告 odom / ekf-fused 各自对 truth 的全程 RMSE。
+        #  报告 odom / ekf-fused 各自对 truth 的全程 RMSE。
         dx_o = df["odom_x"] - df["truth_x"]; dy_o = df["odom_y"] - df["truth_y"]
         dy_o_yaw = wrap_to_pi((df["odom_yaw"] - df["truth_yaw"]).to_numpy())
         dx_e = df["ekf_x"] - df["truth_x"]; dy_e = df["ekf_y"] - df["truth_y"]
@@ -377,6 +447,19 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
         print(f"  final |odom - truth|     = {final_odom_err:.4f} m")
         print(f"  final |ekf  - truth|     = {final_ekf_err:.4f} m  "
               f"(IMU 把 yaw 锚定, 间接把位置漂移压下去)")
+
+        # gyro bias 在线估计结果。
+        bias_final = float(df["ekf_bias_omega"].iloc[-1])
+        sbb0 = float(df["ekf_sigma_bb"].iloc[0])
+        sbb_f = float(df["ekf_sigma_bb"].iloc[-1])
+        print(f"  gyro bias estimate       final = {bias_final:.5f} rad/s")
+        true_bias = recover_true_bias(metadata)
+        if true_bias is not None:
+            print(f"  gyro bias true (preset)        = {true_bias:.5f} rad/s  "
+                  f"(|err| = {abs(bias_final - true_bias):.5f} rad/s)")
+        shrink = f"{sbb0 / sbb_f:.0f}x 收缩" if sbb_f > 0 else "收缩"
+        print(f"  bias covariance Σ_bb     = {sbb0:.4e} -> {sbb_f:.4e} (rad/s)²  "
+              f"({shrink}; fusion 使 bias 可观测)")
     elif mode == "encoder-update":
         odom_err = np.hypot(df["odom_x"].iloc[-1] - df["truth_x"].iloc[-1],
                             df["odom_y"].iloc[-1] - df["truth_y"].iloc[-1])
@@ -396,11 +479,16 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
         print(f"  position-block trace(Σ)    = {pos0:.4e} -> {pos_f:.4e} m²  "
               f"({pos_f / pos0:.0f}x 增长, 无界)")
         print(f"  velocity-block trace(Σ)    = {vel_mid:.4e}  (稳态, 有界)")
+
+        sbb0 = df["ekf_sigma_bb"].iloc[0]
+        sbb_f = df["ekf_sigma_bb"].iloc[-1]
+        print(f"  bias-block Σ_bb            = {sbb0:.4e} -> {sbb_f:.4e}  "
+              f"(几乎不收缩: 无 IMU 时 bias 不可观测)")
     else:
         trace0 = df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
-                     "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[0].sum()
+                     "ekf_sigma_vv", "ekf_sigma_ww", "ekf_sigma_bb"]].iloc[0].sum()
         trace_f = df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
-                      "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[-1].sum()
+                      "ekf_sigma_vv", "ekf_sigma_ww", "ekf_sigma_bb"]].iloc[-1].sum()
         std_x0 = np.sqrt(df["ekf_sigma_xx"].iloc[0])
         std_xf = np.sqrt(df["ekf_sigma_xx"].iloc[-1])
         mean_drift = np.hypot(df["ekf_x"].iloc[-1] - df["ekf_x"].iloc[0],
@@ -429,15 +517,17 @@ def main() -> None:
     mode = metadata.get("mode", "predict-only")
 
     if mode == "encoder+imu":
-        # PR3: fusion 四轨迹叠加 + 累积 RMSE 时间序列。
+        # fusion 四轨迹叠加 + 累积 RMSE 时间序列。
         plot_fusion_trajectory(df, metadata, args.output / "v2_fusion_trajectory.png")
         plot_fusion_rmse_over_time(df, metadata, args.output / "v2_fusion_rmse_over_time.png")
+        # gyro bias 在线估计(收敛 + Σ_bb 塌缩)。
+        plot_bias_learning(df, metadata, args.output / "v2_bias_learning.png")
     elif mode == "encoder-update":
-        # PR2: 三轨迹叠加 + 协方差分离(observability)。
+        # 三轨迹叠加 + 协方差分离(observability)。
         plot_trajectory_overlay(df, metadata, args.output / "v2_encoder_trajectory.png")
         plot_covariance_split(df, metadata, args.output / "v2_encoder_covariance_split.png")
     else:
-        # PR1: 协方差增长曲线(+ 可选椭圆)。
+        # 协方差增长曲线(+ 可选椭圆)。
         plot_growth(df, metadata, args.output / "v2_predict_only_growth.png")
         if args.with_ellipses:
             plot_ellipses(df, metadata, args.output / "v2_predict_only_ellipses.png")

@@ -115,8 +115,8 @@ export namespace mininav
     // 在 V1 全部字段(cmd / true_velocity / truth / encoder / odom)之上,新增 EKF 估计快照
     //
     // EKF 状态快照采用 Thrun 约定:
-    //   ekf_mean  ↔ μ  (mean, 5D: [px, py, θ, v, ω]^T)
-    //   ekf_cov   ↔ Σ  (covariance, 5×5)
+    //   ekf_mean  ↔ μ  (mean, 6D: [px, py, θ, v, ω, b_ω]^T)
+    //   ekf_cov   ↔ Σ  (covariance, 6×6)
     // ---------------------------------------------------------------------------
     struct SimStateV2
     {
@@ -129,7 +129,7 @@ export namespace mininav
         Pose2D odom_pose;
 
         // --- EKF 估计快照 ---
-        Eigen::Vector<double, 5> ekf_mean{Eigen::Vector<double, 5>::Zero()};
-        Eigen::Matrix<double, 5, 5> ekf_cov{Eigen::Matrix<double, 5, 5>::Identity()};
+        Eigen::Vector<double, 6> ekf_mean{Eigen::Vector<double, 6>::Zero()};
+        Eigen::Matrix<double, 6, 6> ekf_cov{Eigen::Matrix<double, 6, 6>::Identity()};
     };
 }

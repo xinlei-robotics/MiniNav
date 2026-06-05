@@ -24,39 +24,46 @@ export namespace mininav
     // ===========================================================================
 
     // ---------------------------------------------------------------------------
-    // 过程模型 g: 5D 常速(constant-velocity)运动模型。
+    // 过程模型 g: 6D 常速(constant-velocity)运动模型 + gyro bias 随机游走。
     //
     //   g(x) = [ px + v·cosθ·dt
     //            py + v·sinθ·dt
     //            θ  + ω·dt
     //            v
-    //            ω            ]
-    //
-    // 注意: 此函数返回的θ不wrap 到 (-π, π]。
+    //            ω
+    //            b_ω           ]
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Vec5 process_model_g(const Vec5& mu, double dt) noexcept;
+    [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt) noexcept;
 
     // ---------------------------------------------------------------------------
     // 解析 Jacobian G = ∂g/∂x
     //
-    //   G = | 1  0  -v·sinθ·dt   cosθ·dt   0  |
-    //       | 0  1   v·cosθ·dt   sinθ·dt   0  |
-    //       | 0  0      1           0      dt |
-    //       | 0  0      0           1      0  |
-    //       | 0  0      0           0      1  |
+    //   G = | 1  0  -v·sinθ·dt   cosθ·dt   0   0 |
+    //       | 0  1   v·cosθ·dt   sinθ·dt   0   0 |
+    //       | 0  0      1           0      dt  0 |
+    //       | 0  0      0           1      0   0 |
+    //       | 0  0      0           0      1   0 |
+    //       | 0  0      0           0      0   1 |
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat5 process_jacobian_G(const Vec5& mu, double dt) noexcept;
+    [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt) noexcept;
 
     // ---------------------------------------------------------------------------
     // 数值 Jacobian: 对 process_model_g 做逐列中心差分。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat5 numeric_process_jacobian(const Vec5& mu, double dt, double eps) noexcept;
+    [[nodiscard]] Mat6 numeric_process_jacobian(const Vec6& mu, double dt, double eps) noexcept;
 
     // ---------------------------------------------------------------------------
     // ProcessNoiseParams: 过程噪声 Q 的物理来源参数。
     //
-    // V1 版本中 Velocity Motion Model 的四个标定参数 (α₁..α₄, Thrun §5.3),
-    // 与 ActuatorModel 用的是同一组物理量。
+    // (α₁..α₄) 来自 V1 Velocity Motion Model(Thrun §5.3), 与 ActuatorModel
+    // 用的是同一组物理量。
+    //
+    // q_bias_omega 是 gyro bias 随机游走的方差 (rad/s)², 也是在线 bias 学习开关:
+    //   - 连续时间随机游走 b(t) 的速率谱密度为 σ_rw² (单位 (rad/s)²/s) 时,
+    //     离散一步(dt)的方差增量为 σ_rw²·dt, 故 q_bias_omega = σ_rw²·dt。
+    //   - 取值应非常小(bias 慢漂)。
+    //   - 缺省 0 → 不在线估计 bias, update_imu 退化为 z=ω 的 5D 兼容行为。
+    //     这样没有显式启用 bias 的滤波器不会让 bias 状态吸收 gyro 白噪声。
     // ---------------------------------------------------------------------------
     struct ProcessNoiseParams
     {
@@ -64,6 +71,7 @@ export namespace mininav
         double alpha2{0.0};
         double alpha3{0.0};
         double alpha4{0.0};
+        double q_bias_omega{0.0};
     };
 
     // ---------------------------------------------------------------------------
@@ -71,9 +79,10 @@ export namespace mininav
     //
     //   Q_vv = α₁·v² + α₂·ω²
     //   Q_ωω = α₃·v² + α₄·ω²
+    //   Q_bb = q_bias_omega
     //   其余项 = 0
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat5 process_noise_Q(const Vec5& mu, const ProcessNoiseParams& params) noexcept;
+    [[nodiscard]] Mat6 process_noise_Q(const Vec6& mu, const ProcessNoiseParams& params) noexcept;
 
     // ---------------------------------------------------------------------------
     // is_symmetric_positive_definite: Σ 数值健康检查。
@@ -82,25 +91,29 @@ export namespace mininav
     //   对称：max|Σ - Σᵀ| ≤ tol;
     //   正定：Cholesky(LLT) 分解成功。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] bool is_symmetric_positive_definite(const Mat5& M, double tol) noexcept;
+    [[nodiscard]] bool is_symmetric_positive_definite(const Mat6& M, double tol) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 初始协方差 Σ₀ = diag(1e-6, 1e-6, 1e-6, 1e-2, 1e-2)。
+    // 初始协方差 Σ₀ = diag(1e-6, 1e-6, 1e-6, 1e-2, 1e-2, 1e-2)。
+    //
+    // bias 维度初值 (0.1)² = 1e-2: 表示"启动时对 gyro bias 几乎一无所知"(先验
+    // 1σ ≈ 0.1 rad/s, 远大于典型 bias 量级), 让 filter 有充分空间在观测中学到它。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat5 default_initial_covariance() noexcept;
+    [[nodiscard]] Mat6 default_initial_covariance() noexcept;
 
     // ---------------------------------------------------------------------------
-    // make_initial_ekf_state: μ₀ = 0 (无信息先验), Σ₀ = default_initial_covariance()。
+    // make_initial_ekf_state: μ₀ = 0 (无信息先验, 含 b_ω₀ = 0),
+    //                         Σ₀ = default_initial_covariance()。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] EkfState5 make_initial_ekf_state() noexcept;
+    [[nodiscard]] EkfState6 make_initial_ekf_state() noexcept;
 
     // ===========================================================================
-    // Ekf: 5D 扩展卡尔曼滤波器。
+    // Ekf: 6D 扩展卡尔曼滤波器
     // ===========================================================================
     class Ekf
     {
     public:
-        Ekf(EkfState5 initial_state, ProcessNoiseParams noise) noexcept
+        Ekf(EkfState6 initial_state, ProcessNoiseParams noise) noexcept
             : state_{std::move(initial_state)}, noise_{noise}
         {
         }
@@ -116,8 +129,9 @@ export namespace mininav
         // update_encoder: encoder 观测的 Kalman update。
         //
         // encoder 观测隐状态 (v, ω) —— 观测模型 z = H·x + 噪声, 其中
-        //   H = [[0, 0, 0, 1, 0],
-        //        [0, 0, 0, 0, 1]]    (选出 v、ω 两行)
+        //   H = [[0, 0, 0, 1, 0, 0],
+        //        [0, 0, 0, 0, 1, 0]]
+        //
         // 标准 Kalman update:
         //   y = z − H·μ̄
         //   S = H·Σ̄·Hᵀ + R_meas
@@ -133,27 +147,28 @@ export namespace mininav
         void update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
 
         // -----------------------------------------------------------------------
-        // update_imu: IMU观测的 Kalman update。
+        // update_imu: IMU观测的 Kalman update(含 bias)。
         //
-        //测量模型:
-        //   z_imu = ω + N(0, R_imu)
-        //   H_imu = [0, 0, 0, 0, 1]
+        // 测量模型(PR4):
+        //   z_imu = ω + b_ω + N(0, R_imu)
+        //   H_imu = [0, 0, 0, 0, 1, 1]
         //
-        // Kalman update:
-        //   y = z − μ̄(ω)
-        //   S = Σ̄(ω,ω) + R_imu
-        //   K = Σ̄·Hᵀ·S⁻¹
-        //   μ = μ̄ + K·y
+        // Kalman update (利用 Hᵀ = e_ω + e_b):
+        //   ẑ = μ̄(ω) + μ̄(b)
+        //   Σ̄·Hᵀ = Σ̄.col(ω) + Σ̄.col(b)
+        //   S = H·(Σ̄·Hᵀ) + R_imu = (Σ̄·Hᵀ)(ω) + (Σ̄·Hᵀ)(b) + R_imu
+        //   K = (Σ̄·Hᵀ) / S
+        //   μ = μ̄ + K·(z − ẑ)
         //   Σ = (I−K·H)·Σ̄·(I−K·H)ᵀ + K·R·Kᵀ
         // -----------------------------------------------------------------------
         void update_imu(double z, double R_imu);
 
-        [[nodiscard]] const EkfState5& state() const noexcept { return state_; }
-        [[nodiscard]] const Vec5& mu() const noexcept { return state_.mu; }
-        [[nodiscard]] const Mat5& Sigma() const noexcept { return state_.Sigma; }
+        [[nodiscard]] const EkfState6& state() const noexcept { return state_; }
+        [[nodiscard]] const Vec6& mu() const noexcept { return state_.mu; }
+        [[nodiscard]] const Mat6& Sigma() const noexcept { return state_.Sigma; }
 
     private:
-        EkfState5 state_;
+        EkfState6 state_;
         ProcessNoiseParams noise_;
     };
 }
