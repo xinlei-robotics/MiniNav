@@ -10,6 +10,7 @@ add_library(core STATIC)
 target_sources(core
         PRIVATE
         types.cpp
+        integrators.cpp
         kinematics.cpp
         robot_model.cpp
         csv_format.cpp
@@ -19,6 +20,7 @@ target_sources(core
         FILE_SET CXX_MODULES FILES
         types.ixx
         math.ixx
+        integrators.ixx
         kinematics.ixx
         robot_model.ixx
         trajectory.ixx
