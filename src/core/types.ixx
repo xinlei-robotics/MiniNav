@@ -125,6 +125,7 @@ export namespace mininav
         Twist2D true_velocity;
         Pose2D truth_pose;
         EncoderTicks enc_dticks;
+        double imu_omega{0.0};
         Pose2D odom_pose;
 
         // --- EKF 估计快照 ---

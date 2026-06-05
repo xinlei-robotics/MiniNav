@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
 """
-Analyze MiniNav V2 predict-only EKF behaviour.
+Analyze MiniNav V2 EKF behaviour (mode-aware).
 
-Reads data/traj_v2.csv produced by sim_v2 (PR1, predict-only) and generates:
-  - results/v2_predict_only_ellipses.png
-  - results/v2_predict_only_growth.png
-  - stdout summary: 初/末 trace(Σ)、位置标准差膨胀倍数等
+读 data/traj_v2.csv, 根据 CSV 头部的 `# mode` 元信息选择产图:
 
-predict-only 阶段没有观测, EKF 均值冻结在原点(v₀=ω₀=0), 而 Σ₀ 给 (v, ω) 的
-不确定性被过程 Jacobian G 每步映射进 (px, py), 导致位置协方差无界增长。这张图
-直观回答"为什么必须有 observation"。
+mode = predict-only:
+  - results/v2_predict_only_growth.png    trace(Σ) 与位置块特征值的无界增长
+  - results/v2_predict_only_ellipses.png  (--with-ellipses) 位置 2σ 椭圆膨胀
+
+mode = encoder-update:
+  - results/v2_encoder_trajectory.png        truth / odom / ekf 三轨迹叠加。
+      ekf 与 odom 几乎重合(encoder-only EKF = dead reckoning), 两者都随时间
+      偏离 truth —— encoder 约束不了位置漂移。
+  - results/v2_encoder_covariance_split.png  速度块 vs 位置块协方差分离。
+
+mode = encoder+imu:
+  - results/v2_fusion_trajectory.png    truth / odom / ekf-encoder-only /
+      ekf-fused 四轨迹叠加。fused 轨迹明显贴近 truth, 而 odom/encoder-only
+      因 dead reckoning 偏离, IMU 让位置不再无界发散。
+      注: encoder-only 不在 CSV 里, 但 odom 提供"无 IMU" 基线;
+      fused 与 odom 的差距就是 IMU 的贡献。
+  - results/v2_fusion_rmse_over_time.png  RMSE(truth, odom) 与 RMSE(truth, ekf)
+      时间序列, 直观展示 fused 在转弯段开始后误差不再发散。
+
+无论哪种模式都打印 stdout summary。
 
 Run:
-    python scripts/analyze_v2_ekf.py \
-        --input  data/traj_v2.csv \
-        --output results/
+    python scripts/analyze_v2_ekf.py --input data/traj_v2.csv --output results/
 """
 
 from __future__ import annotations
@@ -26,6 +38,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+
+
+def wrap_to_pi(angle: np.ndarray) -> np.ndarray:
+    """规范化到 (-pi, pi], 与 C++ 端 atan2(sin, cos) trick 一致。"""
+    return np.arctan2(np.sin(angle), np.cos(angle))
 
 
 def parse_metadata(path: Path) -> dict[str, str]:
@@ -153,29 +170,248 @@ def plot_growth(df: pd.DataFrame, metadata: dict[str, str],
     plt.close(fig)
 
 
-def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
-    trace0 = (df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
-                  "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[0].sum())
-    trace_f = (df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
-                   "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[-1].sum())
-    std_x0 = np.sqrt(df["ekf_sigma_xx"].iloc[0])
-    std_xf = np.sqrt(df["ekf_sigma_xx"].iloc[-1])
-    mean_drift = np.hypot(df["ekf_x"].iloc[-1] - df["ekf_x"].iloc[0],
-                          df["ekf_y"].iloc[-1] - df["ekf_y"].iloc[0])
+def plot_trajectory_overlay(df: pd.DataFrame, metadata: dict[str, str],
+                            out_path: Path) -> None:
+    """truth / odom / ekf 三轨迹叠加。encoder-update 模式下 ekf 应≈odom, 两者都漂离 truth。"""
+    fig, ax = plt.subplots(figsize=(9, 8))
 
-    print("=" * 60)
-    print("MiniNav V2 predict-only EKF summary")
-    print("=" * 60)
+    ax.plot(df["truth_x"], df["truth_y"],
+            label="truth", linewidth=2.2, color="#1f77b4")
+    ax.plot(df["odom_x"], df["odom_y"],
+            label="odom (V1 baseline)", linewidth=1.6, color="#ff7f0e", linestyle="--")
+    ax.plot(df["ekf_x"], df["ekf_y"],
+            label="ekf (encoder-only)", linewidth=1.6, color="#2ca02c", linestyle=":")
+
+    ax.scatter([df["truth_x"].iloc[0]], [df["truth_y"].iloc[0]],
+               marker="o", s=70, color="green", label="start", zorder=5)
+    ax.scatter([df["truth_x"].iloc[-1]], [df["truth_y"].iloc[-1]],
+               marker="s", s=70, color="#1f77b4", zorder=5)
+    ax.scatter([df["ekf_x"].iloc[-1]], [df["ekf_y"].iloc[-1]],
+               marker="X", s=80, color="#2ca02c", zorder=5)
+
+    # 量化 ekf 与 odom 的贴合度。
+    max_ekf_odom = np.hypot(df["ekf_x"] - df["odom_x"], df["ekf_y"] - df["odom_y"]).max()
+
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_aspect("equal", adjustable="datalim")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    ax.set_title(
+        f"MiniNav V2 — encoder-only EKF tracks wheel odometry\n"
+        f"preset = {preset}, seed = {seed}   "
+        f"(max |ekf − odom| = {max_ekf_odom * 100:.1f} cm; both drift from truth)")
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_covariance_split(df: pd.DataFrame, metadata: dict[str, str],
+                          out_path: Path) -> None:
+    """速度块 vs 位置块协方差 trace。核心 observability 图: 速度有界、位置发散。"""
+    pos_trace = df["ekf_sigma_xx"] + df["ekf_sigma_yy"]
+    vel_trace = df["ekf_sigma_vv"] + df["ekf_sigma_ww"]
+
+    fig, (ax_pos, ax_vel) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    ax_pos.plot(df["t"], pos_trace, color="#d62728", linewidth=1.8)
+    ax_pos.set_yscale("log")
+    ax_pos.set_ylabel("position block\ntrace(Σ_xx + Σ_yy) [m²]")
+    ax_pos.set_title("Position covariance — UNBOUNDED (position unobservable → dead reckoning)")
+    ax_pos.grid(True, alpha=0.3, which="both")
+
+    ax_vel.plot(df["t"], vel_trace, color="#2ca02c", linewidth=1.8)
+    ax_vel.set_ylabel("velocity block\ntrace(Σ_vv + Σ_ωω)")
+    ax_vel.set_xlabel("time [s]")
+    ax_vel.set_title("Velocity covariance — BOUNDED (directly observed by encoder)")
+    ax_vel.grid(True, alpha=0.3)
+    # 速度块从近乎贴零的稳态值起步, 设一个不从 0 开始的 y 轴更能看出 plateau。
+    vel_min, vel_max = vel_trace.min(), vel_trace.max()
+    margin = 0.15 * (vel_max - vel_min + 1e-12)
+    ax_vel.set_ylim(max(0.0, vel_min - margin), vel_max + margin)
+
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    fig.suptitle(
+        f"MiniNav V2 — observability split: encoder bounds velocity, not position\n"
+        f"preset = {preset}, seed = {seed}")
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_fusion_trajectory(df: pd.DataFrame, metadata: dict[str, str],
+                           out_path: Path) -> None:
+    """PR3: truth / odom / ekf-fused 三轨迹叠加。fused 应明显贴近 truth。"""
+    fig, ax = plt.subplots(figsize=(9, 8))
+
+    ax.plot(df["truth_x"], df["truth_y"],
+            label="truth", linewidth=2.4, color="#1f77b4")
+    ax.plot(df["odom_x"], df["odom_y"],
+            label="odom (encoder only, V1 baseline)",
+            linewidth=1.6, color="#ff7f0e", linestyle="--")
+    ax.plot(df["ekf_x"], df["ekf_y"],
+            label="ekf fused (encoder + IMU)",
+            linewidth=2.0, color="#2ca02c")
+
+    ax.scatter([df["truth_x"].iloc[0]], [df["truth_y"].iloc[0]],
+               marker="o", s=70, color="green", label="start", zorder=5)
+    ax.scatter([df["truth_x"].iloc[-1]], [df["truth_y"].iloc[-1]],
+               marker="s", s=70, color="#1f77b4", zorder=5)
+    ax.scatter([df["odom_x"].iloc[-1]], [df["odom_y"].iloc[-1]],
+               marker="X", s=80, color="#ff7f0e", zorder=5)
+    ax.scatter([df["ekf_x"].iloc[-1]], [df["ekf_y"].iloc[-1]],
+               marker="X", s=80, color="#2ca02c", zorder=5)
+
+    odom_final_err = np.hypot(df["odom_x"].iloc[-1] - df["truth_x"].iloc[-1],
+                              df["odom_y"].iloc[-1] - df["truth_y"].iloc[-1])
+    ekf_final_err = np.hypot(df["ekf_x"].iloc[-1] - df["truth_x"].iloc[-1],
+                             df["ekf_y"].iloc[-1] - df["truth_y"].iloc[-1])
+
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_aspect("equal", adjustable="datalim")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best")
+
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    ax.set_title(
+        f"MiniNav V2 — encoder + IMU fusion vs single-sensor odom\n"
+        f"preset = {preset}, seed = {seed}   "
+        f"(final |odom-truth| = {odom_final_err * 100:.1f} cm; "
+        f"|ekf-truth| = {ekf_final_err * 100:.1f} cm)")
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def plot_fusion_rmse_over_time(df: pd.DataFrame, metadata: dict[str, str],
+                               out_path: Path) -> None:
+    """PR3: 累积 RMSE(truth, odom) vs RMSE(truth, ekf-fused) 时间序列。"""
+    # 累积 RMSE 用滑窗会更平滑, 但用 prefix RMSE 更直观地展示"误差长期累积"。
+    dx_odom = df["odom_x"] - df["truth_x"]
+    dy_odom = df["odom_y"] - df["truth_y"]
+    dy_odom_yaw = wrap_to_pi((df["odom_yaw"] - df["truth_yaw"]).to_numpy())
+
+    dx_ekf = df["ekf_x"] - df["truth_x"]
+    dy_ekf = df["ekf_y"] - df["truth_y"]
+    dy_ekf_yaw = wrap_to_pi((df["ekf_yaw"] - df["truth_yaw"]).to_numpy())
+
+    n = np.arange(1, len(df) + 1)
+    rmse_odom_pos = np.sqrt((dx_odom ** 2 + dy_odom ** 2).cumsum() / n)
+    rmse_ekf_pos = np.sqrt((dx_ekf ** 2 + dy_ekf ** 2).cumsum() / n)
+    rmse_odom_yaw = np.sqrt((dy_odom_yaw ** 2).cumsum() / n)
+    rmse_ekf_yaw = np.sqrt((dy_ekf_yaw ** 2).cumsum() / n)
+
+    fig, (ax_pos, ax_yaw) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    ax_pos.plot(df["t"], rmse_odom_pos, color="#ff7f0e", linewidth=1.8,
+                label="odom (encoder only)")
+    ax_pos.plot(df["t"], rmse_ekf_pos, color="#2ca02c", linewidth=1.8,
+                label="ekf fused (encoder + IMU)")
+    ax_pos.set_ylabel("cumulative position RMSE [m]")
+    ax_pos.grid(True, alpha=0.3)
+    ax_pos.legend(loc="best")
+    ax_pos.set_title("Position RMSE — IMU fusion stops the drift at the turn")
+
+    ax_yaw.plot(df["t"], np.degrees(rmse_odom_yaw), color="#ff7f0e", linewidth=1.8,
+                label="odom")
+    ax_yaw.plot(df["t"], np.degrees(rmse_ekf_yaw), color="#2ca02c", linewidth=1.8,
+                label="ekf fused")
+    ax_yaw.set_ylabel("cumulative yaw RMSE [deg]")
+    ax_yaw.set_xlabel("time [s]")
+    ax_yaw.grid(True, alpha=0.3)
+    ax_yaw.legend(loc="best")
+    ax_yaw.set_title("Yaw RMSE — IMU keeps heading anchored")
+
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    fig.suptitle(
+        f"MiniNav V2 — RMSE comparison (preset = {preset}, seed = {seed})",
+        y=1.00)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
+def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
+    mode = metadata.get("mode", "predict-only")
+    print("=" * 64)
+    print(f"MiniNav V2 EKF summary  [mode = {mode}]")
+    print("=" * 64)
     for k, v in metadata.items():
         print(f"  {k:14s} = {v}")
-    print("-" * 60)
-    print(f"  initial trace(Σ)      = {trace0:.4e}")
-    print(f"  final   trace(Σ)      = {trace_f:.4e}")
-    print(f"  σ_x growth            = {std_x0:.4e} m -> {std_xf:.4e} m "
-          f"({std_xf / std_x0:.1f}×)")
-    print(f"  EKF mean displacement = {mean_drift:.4e} m "
-          f"(predict-only: 期望 ≈ 0, 均值冻结)")
-    print("=" * 60)
+    print("-" * 64)
+
+    if mode == "encoder+imu":
+        # PR3: 报告 odom / ekf-fused 各自对 truth 的全程 RMSE。
+        dx_o = df["odom_x"] - df["truth_x"]; dy_o = df["odom_y"] - df["truth_y"]
+        dy_o_yaw = wrap_to_pi((df["odom_yaw"] - df["truth_yaw"]).to_numpy())
+        dx_e = df["ekf_x"] - df["truth_x"]; dy_e = df["ekf_y"] - df["truth_y"]
+        dy_e_yaw = wrap_to_pi((df["ekf_yaw"] - df["truth_yaw"]).to_numpy())
+
+        rmse_odom_pos = float(np.sqrt((dx_o ** 2 + dy_o ** 2).mean()))
+        rmse_ekf_pos = float(np.sqrt((dx_e ** 2 + dy_e ** 2).mean()))
+        rmse_odom_yaw = float(np.sqrt((dy_o_yaw ** 2).mean()))
+        rmse_ekf_yaw = float(np.sqrt((dy_e_yaw ** 2).mean()))
+
+        final_odom_err = float(np.hypot(dx_o.iloc[-1], dy_o.iloc[-1]))
+        final_ekf_err = float(np.hypot(dx_e.iloc[-1], dy_e.iloc[-1]))
+
+        print(f"  RMSE(truth, odom)        pos = {rmse_odom_pos:.4f} m,  "
+              f"yaw = {np.degrees(rmse_odom_yaw):.3f} deg")
+        print(f"  RMSE(truth, ekf fused)   pos = {rmse_ekf_pos:.4f} m,  "
+              f"yaw = {np.degrees(rmse_ekf_yaw):.3f} deg")
+        if rmse_odom_pos > 0 and rmse_odom_yaw > 0:
+            print(f"  fusion improvement       pos: "
+                  f"{100 * (1 - rmse_ekf_pos / rmse_odom_pos):.1f}%,  "
+                  f"yaw: {100 * (1 - rmse_ekf_yaw / rmse_odom_yaw):.1f}%")
+        print(f"  final |odom - truth|     = {final_odom_err:.4f} m")
+        print(f"  final |ekf  - truth|     = {final_ekf_err:.4f} m  "
+              f"(IMU 把 yaw 锚定, 间接把位置漂移压下去)")
+    elif mode == "encoder-update":
+        odom_err = np.hypot(df["odom_x"].iloc[-1] - df["truth_x"].iloc[-1],
+                            df["odom_y"].iloc[-1] - df["truth_y"].iloc[-1])
+        ekf_err = np.hypot(df["ekf_x"].iloc[-1] - df["truth_x"].iloc[-1],
+                           df["ekf_y"].iloc[-1] - df["truth_y"].iloc[-1])
+        max_ekf_odom = np.hypot(df["ekf_x"] - df["odom_x"], df["ekf_y"] - df["odom_y"]).max()
+
+        pos0 = df["ekf_sigma_xx"].iloc[0] + df["ekf_sigma_yy"].iloc[0]
+        pos_f = df["ekf_sigma_xx"].iloc[-1] + df["ekf_sigma_yy"].iloc[-1]
+        vel = df["ekf_sigma_vv"] + df["ekf_sigma_ww"]
+        vel_mid = vel.iloc[len(vel) // 2:].mean()
+
+        print(f"  final |odom - truth|       = {odom_err:.4f} m")
+        print(f"  final |ekf  - truth|       = {ekf_err:.4f} m  (≈ odom: 都在漂移)")
+        print(f"  max   |ekf  - odom|        = {max_ekf_odom:.4e} m  "
+              f"(退化为单传感器开环积分)")
+        print(f"  position-block trace(Σ)    = {pos0:.4e} -> {pos_f:.4e} m²  "
+              f"({pos_f / pos0:.0f}x 增长, 无界)")
+        print(f"  velocity-block trace(Σ)    = {vel_mid:.4e}  (稳态, 有界)")
+    else:
+        trace0 = df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
+                     "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[0].sum()
+        trace_f = df[["ekf_sigma_xx", "ekf_sigma_yy", "ekf_sigma_thth",
+                      "ekf_sigma_vv", "ekf_sigma_ww"]].iloc[-1].sum()
+        std_x0 = np.sqrt(df["ekf_sigma_xx"].iloc[0])
+        std_xf = np.sqrt(df["ekf_sigma_xx"].iloc[-1])
+        mean_drift = np.hypot(df["ekf_x"].iloc[-1] - df["ekf_x"].iloc[0],
+                              df["ekf_y"].iloc[-1] - df["ekf_y"].iloc[0])
+        print(f"  initial trace(Σ)      = {trace0:.4e}")
+        print(f"  final   trace(Σ)      = {trace_f:.4e}")
+        print(f"  σ_x growth            = {std_x0:.4e} m -> {std_xf:.4e} m "
+              f"({std_xf / std_x0:.1f}×)")
+        print(f"  EKF mean displacement = {mean_drift:.4e} m "
+              f"(predict-only: 期望 ≈ 0, 均值冻结)")
+    print("=" * 64)
 
 
 def main() -> None:
@@ -184,19 +420,28 @@ def main() -> None:
     parser.add_argument("--output", default="results/", type=Path)
     parser.add_argument(
         "--with-ellipses", action="store_true",
-        help="额外输出位置协方差椭圆图。predict-only(均值冻结、θ 恒定)下椭圆退化为"
-             "沿运动轴的一维拉长形状, 故 PR1 默认不出; 该图的黄金场景是 PR2"
-             "(均值跟随 truth, 椭圆沿路径铺开后随 update 收敛)。")
+        help="(predict-only 模式) 额外输出位置协方差椭圆图。")
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
 
     df, metadata = load_trajectory(args.input)
+    mode = metadata.get("mode", "predict-only")
 
-    # PR1 主图: 协方差增长曲线(trace + 位置块特征值)。
-    plot_growth(df, metadata, args.output / "v2_predict_only_growth.png")
-    if args.with_ellipses:
-        plot_ellipses(df, metadata, args.output / "v2_predict_only_ellipses.png")
+    if mode == "encoder+imu":
+        # PR3: fusion 四轨迹叠加 + 累积 RMSE 时间序列。
+        plot_fusion_trajectory(df, metadata, args.output / "v2_fusion_trajectory.png")
+        plot_fusion_rmse_over_time(df, metadata, args.output / "v2_fusion_rmse_over_time.png")
+    elif mode == "encoder-update":
+        # PR2: 三轨迹叠加 + 协方差分离(observability)。
+        plot_trajectory_overlay(df, metadata, args.output / "v2_encoder_trajectory.png")
+        plot_covariance_split(df, metadata, args.output / "v2_encoder_covariance_split.png")
+    else:
+        # PR1: 协方差增长曲线(+ 可选椭圆)。
+        plot_growth(df, metadata, args.output / "v2_predict_only_growth.png")
+        if args.with_ellipses:
+            plot_ellipses(df, metadata, args.output / "v2_predict_only_ellipses.png")
+
     print_summary(df, metadata)
 
 

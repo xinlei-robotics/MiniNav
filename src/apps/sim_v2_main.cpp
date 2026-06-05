@@ -8,9 +8,11 @@ import mininav.core.random;
 import mininav.core.logger;
 import mininav.sensors.actuator_model;
 import mininav.sensors.wheel_encoder;
+import mininav.sensors.imu_model;
 import mininav.localization.wheel_odometry;
 import mininav.localization.ekf_state;
 import mininav.localization.ekf;
+import mininav.localization.encoder_observation;
 import mininav.viz.rerun_sink;
 import mininav.viz.sim_state_log;
 
@@ -47,22 +49,26 @@ namespace
         std::string_view name;
         double alpha1, alpha2, alpha3, alpha4; // Velocity Motion Model
         double slip_sigma; // 编码器打滑标准差
+        double sigma_imu; // IMU gyro 白噪声标准差 [rad/s]
     };
 
     constexpr V2Preset kPresetLowNoise{
         "low-noise",
         0.01, 0.005, 0.005, 0.01,
         0.005,
+        0.002,
     };
     constexpr V2Preset kPresetDefault{
         "default",
         0.05, 0.02, 0.02, 0.05,
         0.02,
+        0.005,
     };
     constexpr V2Preset kPresetHighNoise{
         "high-noise",
         0.15, 0.08, 0.08, 0.15,
         0.05,
+        0.015,
     };
 
     [[nodiscard]] const V2Preset* find_preset(std::string_view name) noexcept
@@ -93,7 +99,7 @@ namespace
     {
         CLI::App app{
             "MiniNav V2 simulation: actuator + encoder noise, wheel-odometry "
-            "baseline, and a predict-only 5D EKF."
+            "baseline, and a predict-only 5D EKF (PR1: no measurement update)."
         };
 
         std::optional<std::uint64_t> seed_opt;
@@ -181,7 +187,7 @@ namespace
         out << "# preset = " << preset_name << '\n';
         out << "# dt = " << kSimulationDt << '\n';
         out << "# duration = " << kSimulationTotalTime << '\n';
-        out << "# mode = predict-only\n"; // PR1: EKF 不消费任何观测
+        out << "# mode = encoder+imu\n";
         out << "# generated_at = "
             << std::put_time(std::gmtime(&now_t), "%Y-%m-%dT%H:%M:%SZ")
             << '\n';
@@ -211,7 +217,7 @@ int main(int argc, char** argv)
         {
             std::ostringstream banner;
             banner << "MiniNav V2: preset = " << preset.name
-                << ", seed = " << master_seed << ", mode = predict-only";
+                << ", seed = " << master_seed << ", mode = encoder+imu";
             log::info(banner.str());
         }
 
@@ -240,6 +246,11 @@ int main(int argc, char** argv)
             rng_factory.make_engine("encoder_slip_right")
         };
 
+        ImuModel imu{
+            ImuParams{.sigma_omega = preset.sigma_imu},
+            rng_factory.make_engine("imu_gyro_noise")
+        };
+
         // V1 的 wheel odometry 保留为 EKF 的对照基线。
         WheelOdometry odometry{
             WheelOdometryParams{
@@ -250,12 +261,25 @@ int main(int argc, char** argv)
             Pose2D{0.0, 0.0, 0.0}
         };
 
+        // ---- EKF (predict + encoder + IMU update) ----------------------
+        // 过程噪声 Q 用与 actuator 同源的 α; μ₀ = 0(无信息先验),
+        // Σ₀ = diag(1e-6,1e-6,1e-6,1e-2,1e-2)。PR3 每步执行三阶段:
+        //   predict → update_encoder(2D 观测 v,ω) → update_imu(1D 观测 ω)
         Ekf ekf{
             make_initial_ekf_state(),
             ProcessNoiseParams{
                 .alpha1 = preset.alpha1, .alpha2 = preset.alpha2,
                 .alpha3 = preset.alpha3, .alpha4 = preset.alpha4,
             }
+        };
+
+        // encoder 观测噪声参数 : 与 WheelEncoderModel 相同(slip_sigma、
+        // distance_per_tick、wheel_base), 体现"R 由物理参数推导"。
+        const EncoderNoiseParams enc_noise{
+            .sigma_slip = preset.slip_sigma,
+            .distance_per_tick = 2.0 * std::numbers::pi * kWheelRadius
+            / static_cast<double>(kTicksPerRev),
+            .wheel_base = kWheelBase,
         };
 
         // ---- Trajectory + CSV 输出准备 ----------------------------------
@@ -302,11 +326,12 @@ int main(int argc, char** argv)
             const double t = static_cast<double>(i) * kSimulationDt;
             const Twist2D cmd = command_source.command_at(t);
 
-            // 当前时刻 t 的传感测量:cmd → 执行噪声 → 编码器
+            // 当前时刻 t 的传感测量:cmd → 执行噪声 → 编码器 + IMU
             const Twist2D true_velocity = actuator.apply(cmd);
             const EncoderTicks dticks = encoder.measure(true_velocity, kSimulationDt);
+            const double imu_omega = imu.measure(true_velocity.w());
 
-            // 记录 *本步开始时* 的 EKF belief 快照(mirror 了 odom_pose 的
+            // 记录本步开始时的 EKF belief 快照(mirror 了 odom_pose 的
             // "log-then-update" 约定: 末尾才推进)。
             const SimStateV2 state{
                 .t = t,
@@ -314,6 +339,7 @@ int main(int argc, char** argv)
                 .true_velocity = true_velocity,
                 .truth_pose = truth_pose,
                 .enc_dticks = dticks,
+                .imu_omega = imu_omega,
                 .odom_pose = odom_pose,
                 .ekf_mean = ekf.mu(),
                 .ekf_cov = ekf.Sigma(),
@@ -335,14 +361,14 @@ int main(int argc, char** argv)
                 };
                 log_to_rerun(*sink, v1_view, kRobotEntityPath);
 
-                // EKF mean 轨迹(predict-only: 冻结在原点, truth 开走 → 误差增长)。
+                // EKF mean 轨迹
                 const Pose2D ekf_pose{
                     ekf.mu()(kPx), ekf.mu()(kPy), ekf.mu()(kTheta)
                 };
                 sink->log_pose(kEkfEntity, ekf_pose);
                 sink->log_trail_point(kEkfTrail, ekf_pose.x(), ekf_pose.y());
 
-                // cmd_traj 参考轨迹(完美执行 cmd 时的理想路径)。
+                // cmd_traj 参考轨迹
                 sink->log_pose(kCmdTrajEntity, cmd_pose);
                 sink->log_trail_point(kCmdTrajTrail, cmd_pose.x(), cmd_pose.y());
             }
@@ -351,8 +377,18 @@ int main(int argc, char** argv)
             cmd_pose = differential_drive_step(cmd_pose, cmd, kSimulationDt);
             odom_pose = odometry.update(dticks, kSimulationDt);
 
-            // EKF 一步预测(无 update)。放在末尾, 与 odom 的推进同相位。
+            // EKF 三阶段: predict → update_encoder → update_imu。
             ekf.predict(kSimulationDt);
+
+            // encoder 观测: 解码 → 在预测速度处求 R → Joseph update。
+            const Eigen::Vector2d z_enc = decode_encoder(dticks, enc_noise, kSimulationDt);
+            const Eigen::Matrix2d R_enc =
+                encoder_noise_covariance(ekf.mu()(kV), ekf.mu()(kOmega), enc_noise, kSimulationDt);
+            ekf.update_encoder(z_enc, R_enc);
+
+            // IMU 观测: 标量 ω, R = σ_imu²
+            const double R_imu = preset.sigma_imu * preset.sigma_imu;
+            ekf.update_imu(imu_omega, R_imu);
         }
 
         write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name);
