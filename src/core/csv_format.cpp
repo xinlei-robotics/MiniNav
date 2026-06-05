@@ -68,13 +68,13 @@ namespace mininav
     }
 
     // -------------------------------------------------------------------------
-    // SimStateV2: V1 的 13 列 + 5 列 EKF 均值 + 6 列协方差 = 24 列。
+    // SimStateV2: V1 的 13 列 + 6 列 EKF 均值 + 7 列协方差 = 26 列。
     //
-    // ekf_cov 是 5×5, 索引约定: 0=px 1=py 2=θ 3=v 4=ω。
+    // ekf_cov 是 6×6, 索引约定: 0=px 1=py 2=θ 3=v 4=ω 5=b_ω。
     //
-    // 协方差量只导出 6 个:
+    // 协方差量只导出 7 个:
     //   - 位置 2×2 子块的三项 (xx, yy, xy)，供 3σ 不确定椭圆使用。;
-    //   - 另 3 个对角项 (θθ, vv, ωω)，供 3σ 包络曲线使用。
+    //   - 另 4 个对角项 (θθ, vv, ωω, b_ωb_ω)，供 3σ 包络曲线 / bias 学习曲线使用。
     // -------------------------------------------------------------------------
     std::string csv_header(const SimStateV2&)
     {
@@ -85,9 +85,9 @@ namespace mininav
             "enc_dl,enc_dr,"
             "imu_omega,"
             "odom_x,odom_y,odom_yaw,"
-            "ekf_x,ekf_y,ekf_yaw,ekf_v,ekf_omega,"
+            "ekf_x,ekf_y,ekf_yaw,ekf_v,ekf_omega,ekf_bias_omega,"
             "ekf_sigma_xx,ekf_sigma_yy,ekf_sigma_xy,"
-            "ekf_sigma_thth,ekf_sigma_vv,ekf_sigma_ww";
+            "ekf_sigma_thth,ekf_sigma_vv,ekf_sigma_ww,ekf_sigma_bb";
     }
 
     std::string csv_row(const SimStateV2& record)
@@ -106,19 +106,21 @@ namespace mininav
             << record.odom_pose.x() << ','
             << record.odom_pose.y() << ','
             << record.odom_pose.yaw() << ','
-            // EKF mean: [px, py, θ, v, ω]
+            // EKF mean: [px, py, θ, v, ω, b_ω]
             << record.ekf_mean(0) << ','
             << record.ekf_mean(1) << ','
             << record.ekf_mean(2) << ','
             << record.ekf_mean(3) << ','
             << record.ekf_mean(4) << ','
+            << record.ekf_mean(5) << ','
             // EKF covariance(选取项)
             << record.ekf_cov(0, 0) << ',' // sigma_xx
             << record.ekf_cov(1, 1) << ',' // sigma_yy
             << record.ekf_cov(0, 1) << ',' // sigma_xy
             << record.ekf_cov(2, 2) << ',' // sigma_thth
             << record.ekf_cov(3, 3) << ',' // sigma_vv
-            << record.ekf_cov(4, 4); // sigma_ww
+            << record.ekf_cov(4, 4) << ',' // sigma_ww
+            << record.ekf_cov(5, 5); // sigma_bb
 
         return os.str();
     }
