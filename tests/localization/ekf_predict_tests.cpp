@@ -13,10 +13,10 @@ using namespace mininav;
 
 namespace
 {
-    EkfState5 state_with_velocity(double v, double w)
+    EkfState6 state_with_velocity(double v, double w)
     {
-        EkfState5 s;
-        s.mu << 0.0, 0.0, 0.0, v, w;
+        EkfState6 s;
+        s.mu << 0.0, 0.0, 0.0, v, w, 0.0; // 6D: 末位为 gyro bias b_ω₀ = 0
         s.Sigma = default_initial_covariance();
         return s;
     }
@@ -32,7 +32,7 @@ namespace
 TEST(EkfPredict, MeanIsStationaryWhenVelocityIsZero)
 {
     Ekf ekf{make_initial_ekf_state(), default_preset_noise()};
-    const Vec5 mu0 = ekf.mu();
+    const Vec6 mu0 = ekf.mu();
 
     for (int i = 0; i < 2000; ++i)
     {
@@ -143,11 +143,12 @@ TEST(EkfPredict, CovarianceRemainsSymmetricPositiveDefinite)
 
 TEST(EkfPredict, InitialCovarianceMatchesDesignedSigma0)
 {
-    const Mat5 Sigma0 = default_initial_covariance();
+    const Mat6 Sigma0 = default_initial_covariance();
     EXPECT_DOUBLE_EQ(Sigma0(kPx, kPx), 1e-6);
     EXPECT_DOUBLE_EQ(Sigma0(kPy, kPy), 1e-6);
     EXPECT_DOUBLE_EQ(Sigma0(kTheta, kTheta), 1e-6);
     EXPECT_DOUBLE_EQ(Sigma0(kV, kV), 1e-2);
     EXPECT_DOUBLE_EQ(Sigma0(kOmega, kOmega), 1e-2);
+    EXPECT_DOUBLE_EQ(Sigma0(kBiasOmega, kBiasOmega), 1e-2);
     EXPECT_TRUE(is_symmetric_positive_definite(Sigma0, 1e-12));
 }
