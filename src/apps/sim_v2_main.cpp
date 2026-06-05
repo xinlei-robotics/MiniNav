@@ -44,31 +44,51 @@ namespace
     constexpr std::string_view kEkfEntity = "/world/robot/ekf";
     constexpr std::string_view kEkfTrail = "/world/trails/ekf";
 
+    // gyro bias 学习曲线(Time Series): 估计值与仿真真值各一条。
+    constexpr std::string_view kEkfBiasOmega = "/plots/bias_omega/ekf";
+    constexpr std::string_view kTrueBiasOmega = "/plots/bias_omega/truth";
+
     struct V2Preset
     {
         std::string_view name;
         double alpha1, alpha2, alpha3, alpha4; // Velocity Motion Model
         double slip_sigma; // 编码器打滑标准差
         double sigma_imu; // IMU gyro 白噪声标准差 [rad/s]
+        double imu_bias_init; // IMU gyro bias 真值(filter 待学习)[rad/s]
+        double imu_bias_rw; // IMU gyro bias 每步随机游走标准差 [rad/s]; 0 => 常数 bias
+        double q_bias_omega; // EKF 对 bias 的过程噪声(单步方差)(rad/s)²
     };
 
+    // 注: imu_bias_rw 默认置 0;
+    // 确认后把它调成小正数(如 5e-5)即可观察 filter 跟踪【漂移 bias】的能力。
+    // EKF 侧的 q_bias_omega 保持小正值, 使 filter 即便面对常数 bias 也维持一点
+    // 自适应余量(标准工业做法)。
     constexpr V2Preset kPresetLowNoise{
         "low-noise",
         0.01, 0.005, 0.005, 0.01,
         0.005,
         0.002,
+        0.01,  // imu_bias_init
+        0.0,   // imu_bias_rw
+        1e-8,  // q_bias_omega
     };
     constexpr V2Preset kPresetDefault{
         "default",
         0.05, 0.02, 0.02, 0.05,
         0.02,
         0.005,
+        0.02,  // imu_bias_init
+        0.0,   // imu_bias_rw
+        1e-8,  // q_bias_omega
     };
     constexpr V2Preset kPresetHighNoise{
         "high-noise",
         0.15, 0.08, 0.08, 0.15,
         0.05,
         0.015,
+        0.03,  // imu_bias_init
+        0.0,   // imu_bias_rw
+        4e-8,  // q_bias_omega
     };
 
     [[nodiscard]] const V2Preset* find_preset(std::string_view name) noexcept
@@ -98,8 +118,8 @@ namespace
     [[nodiscard]] CliOptions parse_cli(int argc, char** argv)
     {
         CLI::App app{
-            "MiniNav V2 simulation: actuator + encoder noise, wheel-odometry "
-            "baseline, and a predict-only 5D EKF (PR1: no measurement update)."
+            "MiniNav V2 simulation: actuator + encoder + IMU noise, wheel-odometry "
+            "baseline, and a 6D EKF fusing encoder + gyro with online bias estimation "
         };
 
         std::optional<std::uint64_t> seed_opt;
@@ -247,8 +267,13 @@ int main(int argc, char** argv)
         };
 
         ImuModel imu{
-            ImuParams{.sigma_omega = preset.sigma_imu},
-            rng_factory.make_engine("imu_gyro_noise")
+            ImuParams{
+                .sigma_omega = preset.sigma_imu,
+                .bias_omega_init = preset.imu_bias_init,
+                .bias_random_walk = preset.imu_bias_rw,
+            },
+            rng_factory.make_engine("imu_gyro_noise"),
+            rng_factory.make_engine("imu_gyro_bias")
         };
 
         // V1 的 wheel odometry 保留为 EKF 的对照基线。
@@ -261,15 +286,18 @@ int main(int argc, char** argv)
             Pose2D{0.0, 0.0, 0.0}
         };
 
-        // ---- EKF (predict + encoder + IMU update) ----------------------
-        // 过程噪声 Q 用与 actuator 同源的 α; μ₀ = 0(无信息先验),
-        // Σ₀ = diag(1e-6,1e-6,1e-6,1e-2,1e-2)。PR3 每步执行三阶段:
-        //   predict → update_encoder(2D 观测 v,ω) → update_imu(1D 观测 ω)
+        // ---- EKF (predict + encoder + IMU update, 6D 含 gyro bias) ------
+        // 过程噪声 Q 用与 actuator 同源的 α(对 v、ω), 外加 bias 随机游走项
+        // q_bias_omega; μ₀ = 0(无信息先验, 含 b_ω₀ = 0),
+        // Σ₀ = diag(1e-6,1e-6,1e-6,1e-2,1e-2,1e-2)。每步执行三阶段:
+        //   predict → update_encoder(2D 观测 v,ω) → update_imu(1D 观测 ω+b_ω)
+        // 关键: bias 仅在 encoder+IMU 同时在场时可观测(见 ekf.ixx update_* 注释)。
         Ekf ekf{
             make_initial_ekf_state(),
             ProcessNoiseParams{
                 .alpha1 = preset.alpha1, .alpha2 = preset.alpha2,
                 .alpha3 = preset.alpha3, .alpha4 = preset.alpha4,
+                .q_bias_omega = preset.q_bias_omega,
             }
         };
 
@@ -367,6 +395,12 @@ int main(int argc, char** argv)
                 };
                 sink->log_pose(kEkfEntity, ekf_pose);
                 sink->log_trail_point(kEkfTrail, ekf_pose.x(), ekf_pose.y());
+
+                // gyro bias 学习曲线: filter 估计 vs 仿真真值。
+                // 在 Rerun Time Series 视图里能直接看到 b_ω 从 0 启动、几秒内
+                // 收敛到真值附近, 这是 state augmentation 最有说服力的演示。
+                sink->log_scalar(kEkfBiasOmega, ekf.mu()(kBiasOmega));
+                sink->log_scalar(kTrueBiasOmega, imu.bias_omega());
 
                 // cmd_traj 参考轨迹
                 sink->log_pose(kCmdTrajEntity, cmd_pose);
