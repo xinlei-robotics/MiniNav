@@ -253,8 +253,8 @@ TEST(WheelOdometry, CircularMotionReturnsNearStart)
     }
     const Pose2D p = odom.current_estimate();
 
-    // 一圈后位置应当接近原点 (积分误差 + 量化误差累积)
-    // 2π·r ≈ 0.4 m 圆周,总误差容许在 ~5 cm 量级 (欧拉积分精度 + 100 步量化)
-    EXPECT_NEAR(p.x(), 0.0, 0.05);
-    EXPECT_NEAR(p.y(), 0.0, 0.05);
+    // 一圈后位置应当接近原点。RK4 将积分误差压到量化误差以下, 这里主要剩下
+    // encoder tick rounding 的累积误差。
+    EXPECT_NEAR(p.x(), 0.0, 0.01);
+    EXPECT_NEAR(p.y(), 0.0, 0.01);
 }
