@@ -29,7 +29,7 @@ export namespace mininav
     //   Rk4   —— 默认/生产路径; 与仿真真值 differential_drive_step 共用同一个
     //            rk4_step (见 ekf_integrator_consistency_tests)。
     //   Euler —— 一阶前向欧拉; 保留它纯粹是为了 RK4-vs-Euler 的归因实验
-    //            (analyze_v2_integrator.py), 让"积分器对估计精度的影响"可被
+    //            (analyze_integrator.py), 让"积分器对估计精度的影响"可被
     //            单独量化。两条路径的解析 Jacobian 都由有限差分测试守护。
     // ---------------------------------------------------------------------------
     enum class Integrator

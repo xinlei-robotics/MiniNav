@@ -3,12 +3,12 @@
 Analyze MiniNav V1 wheel-odometry drift.
 
 Reads data/traj_v1.csv produced by sim_v1 and generates:
-  - results/v1_trajectory.png       —— truth vs odom 2D trajectory
-  - results/v1_drift_over_time.png  —— position / yaw error vs time
+  - results/v1/trajectory.png       —— truth vs odom 2D trajectory
+  - results/v1/drift_over_time.png  —— position / yaw error vs time
   - stdout summary: final position error, final yaw error, peak error
 
 Run:
-    python scripts/analyze_v1_drift.py \
+    python scripts/v1/analyze_drift.py \
         --input  data/traj_v1.csv \
         --output results/
 """
@@ -131,7 +131,7 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input",  default="data/traj_v1.csv", type=Path)
-    parser.add_argument("--output", default="results/",         type=Path)
+    parser.add_argument("--output", default="results/v1/",         type=Path)
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -139,8 +139,8 @@ def main() -> None:
     df, metadata = load_trajectory(args.input)
     df = compute_drift(df)
 
-    plot_trajectory(df, metadata, args.output / "v1_trajectory.png")
-    plot_drift_over_time(df, metadata, args.output / "v1_drift_over_time.png")
+    plot_trajectory(df, metadata, args.output / "trajectory.png")
+    plot_drift_over_time(df, metadata, args.output / "drift_over_time.png")
     print_summary(df, metadata)
 
 

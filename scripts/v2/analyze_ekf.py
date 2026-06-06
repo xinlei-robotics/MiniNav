@@ -5,39 +5,39 @@ Analyze MiniNav V2 EKF behaviour (mode-aware).
 读 data/traj_v2.csv, 根据 CSV 头部的 `# mode` 元信息选择产图:
 
 mode = predict-only:
-  - results/v2_predict_only_growth.png    trace(Σ) 与位置块特征值的无界增长
-  - results/v2_predict_only_ellipses.png  (--with-ellipses) 位置 2σ 椭圆膨胀
+  - results/v2/predict_only_growth.png    trace(Σ) 与位置块特征值的无界增长
+  - results/v2/predict_only_ellipses.png  (--with-ellipses) 位置 2σ 椭圆膨胀
 
 mode = encoder-update:
-  - results/v2_encoder_trajectory.png        truth / odom / ekf 三轨迹叠加。
+  - results/v2/encoder_trajectory.png        truth / odom / ekf 三轨迹叠加。
       ekf 与 odom 几乎重合(encoder-only EKF = dead reckoning), 两者都随时间
       偏离 truth —— encoder 约束不了位置漂移。
-  - results/v2_encoder_covariance_split.png  速度块 vs 位置块协方差分离。
+  - results/v2/encoder_covariance_split.png  速度块 vs 位置块协方差分离。
 
 mode = encoder+imu:
-  - results/v2_fusion_trajectory.png    truth / odom / ekf-encoder-only /
+  - results/v2/fusion_trajectory.png    truth / odom / ekf-encoder-only /
       ekf-fused 四轨迹叠加。fused 轨迹明显贴近 truth, 而 odom/encoder-only
       因 dead reckoning 偏离, IMU 让位置不再无界发散。
       注: encoder-only 不在 CSV 里, 但 odom 提供"无 IMU" 基线;
       fused 与 odom 的差距就是 IMU 的贡献。
-  - results/v2_fusion_rmse_over_time.png  RMSE(truth, odom) 与 RMSE(truth, ekf)
+  - results/v2/fusion_rmse_over_time.png  RMSE(truth, odom) 与 RMSE(truth, ekf)
       时间序列。给定 --ekf-no-bias 时叠加第三条 'ekf (no bias)', 形成
       odom / ekf / ekf_with_bias 三方对比(三条 RMSE 曲线)。
-  - results/v2_state_errors.png  6 个状态维 (px,py,θ,v,ω,b_ω) 的 estimation error
+  - results/v2/state_errors.png  6 个状态维 (px,py,θ,v,ω,b_ω) 的 estimation error
       + ±3σ 包络。一致的 filter 误差应大部分落在带内; 标题给出落入比例。
-  - results/v2_bias_learning.png:
+  - results/v2/bias_learning.png:
       上图 b_ω 估计 + ±2σ 带 + 真值参考线(由 preset 恢复), 几秒内收敛到真值;
       下图 Σ_bb 从无信息先验(1e-2)对数坐标下塌缩 —— encoder+IMU 让 bias 可观测
       的最直观证据(state augmentation 的"招牌图")。
-  - results/v2_nis_consistency.png  encoder/IMU 的 NIS + χ² 95% 区间带(consistency)。
+  - results/v2/nis_consistency.png  encoder/IMU 的 NIS + χ² 95% 区间带(consistency)。
 
 无论哪种模式都打印 stdout summary。
 
 Run:
     # 单次运行(2 条 RMSE):
-    python scripts/analyze_v2_ekf.py --input data/traj_v2.csv --output results/
+    python scripts/v2/analyze_ekf.py --input data/traj_v2.csv --output results/
     # 三方 RMSE 对比(需另跑一次 sim_v2 --no-bias, 同 seed/preset):
-    python scripts/analyze_v2_ekf.py --input data/traj_v2.csv \\
+    python scripts/v2/analyze_ekf.py --input data/traj_v2.csv \\
         --ekf-no-bias data/traj_v2_nobias.csv --output results/
 """
 
@@ -676,7 +676,7 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str],
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default="data/traj_v2.csv", type=Path)
-    parser.add_argument("--output", default="results/", type=Path)
+    parser.add_argument("--output", default="results/v2/", type=Path)
     parser.add_argument(
         "--with-ellipses", action="store_true",
         help="(predict-only 模式) 额外输出位置协方差椭圆图。")
@@ -705,25 +705,25 @@ def main() -> None:
                 print("⚠ 警告: --ekf-no-bias 文件的元信息 bias=on, 它可能不是 --no-bias 运行。")
 
         # fusion 四轨迹叠加 + 累积 RMSE 时间序列(给定 df_nobias 则三方对比)。
-        plot_fusion_trajectory(df, metadata, args.output / "v2_fusion_trajectory.png")
-        plot_fusion_rmse_over_time(df, metadata, args.output / "v2_fusion_rmse_over_time.png",
+        plot_fusion_trajectory(df, metadata, args.output / "fusion_trajectory.png")
+        plot_fusion_rmse_over_time(df, metadata, args.output / "fusion_rmse_over_time.png",
                                    df_nobias=df_nobias)
         # 6 维状态 error + ±3σ 包络。
-        plot_state_errors(df, metadata, args.output / "v2_state_errors.png")
+        plot_state_errors(df, metadata, args.output / "state_errors.png")
         # gyro bias 在线估计(收敛 + Σ_bb 塌缩)。
-        plot_bias_learning(df, metadata, args.output / "v2_bias_learning.png")
+        plot_bias_learning(df, metadata, args.output / "bias_learning.png")
         # NIS consistency 检验(PR5c)。
         if "nis_encoder" in df.columns and "nis_imu" in df.columns:
-            plot_nis(df, metadata, args.output / "v2_nis_consistency.png")
+            plot_nis(df, metadata, args.output / "nis_consistency.png")
     elif mode == "encoder-update":
         # 三轨迹叠加 + 协方差分离(observability)。
-        plot_trajectory_overlay(df, metadata, args.output / "v2_encoder_trajectory.png")
-        plot_covariance_split(df, metadata, args.output / "v2_encoder_covariance_split.png")
+        plot_trajectory_overlay(df, metadata, args.output / "encoder_trajectory.png")
+        plot_covariance_split(df, metadata, args.output / "encoder_covariance_split.png")
     else:
         # 协方差增长曲线(+ 可选椭圆)。
-        plot_growth(df, metadata, args.output / "v2_predict_only_growth.png")
+        plot_growth(df, metadata, args.output / "predict_only_growth.png")
         if args.with_ellipses:
-            plot_ellipses(df, metadata, args.output / "v2_predict_only_ellipses.png")
+            plot_ellipses(df, metadata, args.output / "predict_only_ellipses.png")
 
     print_summary(df, metadata, df_nobias)
 

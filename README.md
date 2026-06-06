@@ -12,7 +12,7 @@
 From kinematic simulation to a Raspberry Pi 5 + 4WD car indoor navigation
 demo — built incrementally, version by version.
 
-<img src="results/v1_three_trajectories.gif" alt="MiniNav V1 — three-trajectory 3D replay in Rerun" width="720"/>
+<img src="results/v1/three_trajectories.gif" alt="MiniNav V1 — three-trajectory 3D replay in Rerun" width="720"/>
 
 *V1, replayed in Rerun's 3D view: command path (green), ground truth
 (blue), and wheel-odometry estimate (orange) starting together and
@@ -58,8 +58,8 @@ imperfect channels** on top of that codebase — one at the actuator,
 one at the sensor — and quantifies the resulting drift.
 
 <p align="center">
-  <img src="results/v1_trajectory.png" alt="V1 — truth vs odom trajectory" width="80%"/>
-  <img src="results/v1_drift_over_time.png" alt="V1 — drift error over time" width="80%"/>
+  <img src="results/v1/trajectory.png" alt="V1 — truth vs odom trajectory" width="80%"/>
+  <img src="results/v1/drift_over_time.png" alt="V1 — drift error over time" width="80%"/>
 </p>
 
 ### Two-channel architecture
@@ -278,10 +278,10 @@ ctest --preset test-debug --output-on-failure
 
 ```bash
 source .venv/bin/activate
-python scripts/analyze_v1_drift.py
+python scripts/v1/analyze_drift.py
 ```
 
-Produces `results/v1_trajectory.png` and `results/v1_drift_over_time.png`,
+Produces `results/v1/trajectory.png` and `results/v1/drift_over_time.png`,
 and prints final / peak position error and final yaw error to stdout.
 
 ### V0 simulation (preserved as regression baseline)

@@ -10,14 +10,14 @@ RK4 vs Euler 归因实验 —— 多 seed 扫描求平均 (V2 PR5a)。
 所以【每个 seed 内】的增益是干净归因; 跨 seed 平均只是降低对单条轨迹的偶然依赖。
 
 Run:
-    python scripts/sweep_v2_integrator.py --n-seeds 50 --preset default --output results/
+    python scripts/v2/sweep_integrator.py --n-seeds 50 --preset default --output results/v2/
     # 或显式给定 seeds:
-    python scripts/sweep_v2_integrator.py --seeds 1 7 42 100 --preset high-noise
+    python scripts/v2/sweep_integrator.py --seeds 1 7 42 100 --preset high-noise
 
-⚠ inverse crime 等同 analyze_v2_integrator.py 的交代: truth 由 RK4 生成, 故增益是下界。
+⚠ inverse crime 等同 analyze_integrator.py 的交代: truth 由 RK4 生成, 故增益是下界。
 
 产出:
-  - results/v2_integrator_sweep.png  跨 seed 平均的累积 RMSE(±1σ 带, euler vs rk4)
+  - results/v2/integrator_sweep.png  跨 seed 平均的累积 RMSE(±1σ 带, euler vs rk4)
   - stdout: 每 seed 表 + 平均 ± 标准差 + 平均增益
 """
 
@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 
 # 复用单对分析脚本里的 RMSE 工具(同目录)。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from analyze_v2_integrator import load, overall_rmse, rmse_series, check_same_world  # noqa: E402
+from analyze_integrator import load, overall_rmse, rmse_series, check_same_world  # noqa: E402
 
 
 def run_sim(binary: Path, seed: int, preset: str, integrator: str, out: Path) -> None:
@@ -60,7 +60,7 @@ def main() -> None:
                         help="显式 seed 列表; 缺省用 0..n-seeds-1。")
     parser.add_argument("--n-seeds", type=int, default=50,
                         help="--seeds 未给时, 使用 seeds = 0..N-1。")
-    parser.add_argument("--output", default="results/", type=Path)
+    parser.add_argument("--output", default="results/v2/", type=Path)
     args = parser.parse_args()
 
     if not args.bin.exists():
@@ -133,7 +133,7 @@ def main() -> None:
         print(f"  {'':40} yaw:      {yg_valid.mean():+.3f}%{yg_std}")
     print("-" * 78)
     print("  注 (inverse crime): truth 由 RK4 生成 → 增益为下界; dt=0.01 且每步观测,")
-    print("       积分误差被传感器噪声主导。详见 analyze_v2_integrator.py。")
+    print("       积分误差被传感器噪声主导。详见 analyze_integrator.py。")
     print("=" * 78)
 
     # ---- 平均累积 RMSE 曲线(±1σ 带) ----
@@ -164,7 +164,7 @@ def main() -> None:
         f"MiniNav V2 — EKF integrator attribution, averaged over {len(seeds)} seeds\n"
         f"preset = {args.preset}  (per-seed: same truth + measurements; only EKF model differs)")
     fig.tight_layout()
-    out_png = args.output / "v2_integrator_sweep.png"
+    out_png = args.output / "integrator_sweep.png"
     fig.savefig(out_png, dpi=140)
     plt.close(fig)
     print(f"  图已写入 {out_png}")

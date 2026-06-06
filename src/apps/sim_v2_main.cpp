@@ -121,7 +121,7 @@ namespace
     };
 
     // CLI 名 → EKF 过程模型积分器。rk4 是生产默认; euler 仅供归因实验
-    // (analyze_v2_integrator.py)。
+    // (analyze_integrator.py)。
     [[nodiscard]] mininav::Integrator integrator_from_name(std::string_view name) noexcept
     {
         return name == "euler" ? mininav::Integrator::Euler : mininav::Integrator::Rk4;
@@ -160,7 +160,7 @@ namespace
 
         app.add_option("--out", out_path_str,
                        "Output CSV path (default: data/traj_v2.csv). Set this to keep the "
-                       "euler / rk4 runs in separate files for analyze_v2_integrator.py.");
+                       "euler / rk4 runs in separate files for analyze_integrator.py.");
 
         app.add_option("--q-scale", q_scale,
                        "Multiplier on the EKF process noise Q (sensitivity analysis). "

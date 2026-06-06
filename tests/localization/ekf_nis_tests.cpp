@@ -4,7 +4,7 @@
 // update_encoder / update_imu 返回 NIS = yᵀ·S⁻¹·y(分别 2-DOF / 1-DOF)。
 // 这里用预测期(predict 后、update 前)的 (μ̄, Σ̄) 独立地手算同一二次型,
 // 与方法返回值逐位比对 —— 把"NIS 计算正确"钉成回归测试。consistency 分析
-// (analyze_v2_ekf.py 的 χ² 区间检验)完全依赖这个返回值的正确性。
+// (analyze_ekf.py 的 χ² 区间检验)完全依赖这个返回值的正确性。
 // ===========================================================================
 #include <gtest/gtest.h>
 

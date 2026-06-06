@@ -9,7 +9,7 @@
 rerun-sdk==0.31.4
 
 # Drift analysis & static figure generation
-# (scripts/analyze_v1_drift.py)
+# (scripts/v1/analyze_drift.py)
 numpy>=1.26
 pandas>=2.0
 matplotlib>=3.8
