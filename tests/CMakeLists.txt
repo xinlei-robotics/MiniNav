@@ -57,6 +57,7 @@ add_executable(localization_tests
         localization/wheel_odometry_tests.cpp
         localization/ekf_predict_tests.cpp
         localization/ekf_jacobian_finite_diff_tests.cpp
+        localization/ekf_integrator_consistency_tests.cpp
         localization/encoder_observation_tests.cpp
         localization/ekf_encoder_update_tests.cpp
         localization/ekf_imu_update_tests.cpp
