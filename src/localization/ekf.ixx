@@ -26,8 +26,11 @@ export namespace mininav
     // ---------------------------------------------------------------------------
     // 过程模型 g: 6D 常速(constant-velocity)运动模型 + gyro bias 随机游走。
     //
-    //   g(x) = [ px + v·cosθ·dt
-    //            py + v·sinθ·dt
+    // 位置/航向用 RK4 积分(与仿真真值 differential_drive_step 同一个 rk4_step),
+    // (v, ω, b_ω) 为恒等映射。由于一步内 (v, ω) 视为常量, RK4 对位置塌缩为 Simpson 求积:
+    //
+    //   g(x) = [ px + (dt/6)·v·[cosθ + 4·cos(θ+½ωdt) + cos(θ+ωdt)]
+    //            py + (dt/6)·v·[sinθ + 4·sin(θ+½ωdt) + sin(θ+ωdt)]
     //            θ  + ω·dt
     //            v
     //            ω
@@ -36,14 +39,18 @@ export namespace mininav
     [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 解析 Jacobian G = ∂g/∂x
+    // 解析 Jacobian G = ∂g/∂x (RK4/Simpson 过程模型的精确偏导)。
     //
-    //   G = | 1  0  -v·sinθ·dt   cosθ·dt   0   0 |
-    //       | 0  1   v·cosθ·dt   sinθ·dt   0   0 |
-    //       | 0  0      1           0      dt  0 |
-    //       | 0  0      0           1      0   0 |
-    //       | 0  0      0           0      1   0 |
-    //       | 0  0      0           0      0   1 |
+    // 记 (c₀,cₘ,c₁) = cos(θ, θ+½ωdt, θ+ωdt), (s₀,sₘ,s₁) 同理:
+    //
+    //   G(px,θ) = (dt/6)·v·(−s₀−4sₘ−s₁)   G(px,v) = (dt/6)·(c₀+4cₘ+c₁)
+    //   G(px,ω) = −(dt²/6)·v·(2sₘ+s₁)      ← RK4 相对欧拉新增的 O(dt²) 耦合
+    //   G(py,θ) = (dt/6)·v·(c₀+4cₘ+c₁)     G(py,v) = (dt/6)·(s₀+4sₘ+s₁)
+    //   G(py,ω) = (dt²/6)·v·(2cₘ+c₁)
+    //   G(θ,ω)  = dt
+    //   其余为单位阵 (px,py 对自身=1; v,ω,b_ω 行恒等)。
+    //
+    // ω→0 极限下退回欧拉的 (−v·sinθ·dt, cosθ·dt, v·cosθ·dt, sinθ·dt)。
     // ---------------------------------------------------------------------------
     [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt) noexcept;
 

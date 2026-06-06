@@ -11,25 +11,27 @@ module mininav.localization.ekf;
 
 import mininav.localization.ekf_state;
 import mininav.core.math;
+import mininav.core.integrators;
+import mininav.core.types;
 
 namespace mininav
 {
     Vec6 process_model_g(const Vec6& mu, const double dt) noexcept
     {
-        const double px = mu(kPx);
-        const double py = mu(kPy);
         const double th = mu(kTheta);
         const double v = mu(kV);
         const double w = mu(kOmega);
-        const double b = mu(kBiasOmega);
+
+        const Pose2D next = rk4_step(Pose2D{mu(kPx), mu(kPy), th}, Twist2D{v, w}, dt);
 
         Vec6 out;
-        out(kPx) = px + v * std::cos(th) * dt;
-        out(kPy) = py + v * std::sin(th) * dt;
+        out(kPx) = next.x();
+        out(kPy) = next.y();
+        // (v, ω) 常量 ⇒ yaw_dot ≡ ω, RK4 的 θ 解精确等于 θ + ω·dt。
         out(kTheta) = th + w * dt;
         out(kV) = v;
         out(kOmega) = w;
-        out(kBiasOmega) = b;
+        out(kBiasOmega) = mu(kBiasOmega);
         return out;
     }
 
@@ -37,12 +39,35 @@ namespace mininav
     {
         const double th = mu(kTheta);
         const double v = mu(kV);
+        const double w = mu(kOmega);
+
+        // (v, ω) 在一步内为常量, 故 RK4 的 stage 航向只有三个取值:
+        //   θ、θ+½ω·dt、θ+ω·dt。RK4 在此塌缩为对 ∫v·cos/sin(θ+ωτ)dτ 的 Simpson 求积:
+        //   Δx = (dt/6)·v·[c₀ + 4·cₘ + c₁],  Δy = (dt/6)·v·[s₀ + 4·sₘ + s₁]。
+        // 下面是它对状态的解析偏导(由 MatchesFiniteDifference 测试守护)。
+        const double thm = th + 0.5 * w * dt;
+        const double th1 = th + w * dt;
+
+        const double c0 = std::cos(th), s0 = std::sin(th);
+        const double cm = std::cos(thm), sm = std::sin(thm);
+        const double c1 = std::cos(th1), s1 = std::sin(th1);
+
+        const double sixth = dt / 6.0;
+        const double dt2_sixth = dt * dt / 6.0;
 
         Mat6 G = Mat6::Identity();
-        G(kPx, kTheta) = -v * std::sin(th) * dt;
-        G(kPx, kV) = std::cos(th) * dt;
-        G(kPy, kTheta) = v * std::cos(th) * dt;
-        G(kPy, kV) = std::sin(th) * dt;
+
+        // px 行: ∂gₓ/∂{θ, v, ω}。∂gₓ/∂ω 是 RK4 相对欧拉新增的 O(dt²) 耦合。
+        G(kPx, kTheta) = sixth * v * (-s0 - 4.0 * sm - s1);
+        G(kPx, kV) = sixth * (c0 + 4.0 * cm + c1);
+        G(kPx, kOmega) = -dt2_sixth * v * (2.0 * sm + s1);
+
+        // py 行。
+        G(kPy, kTheta) = sixth * v * (c0 + 4.0 * cm + c1);
+        G(kPy, kV) = sixth * (s0 + 4.0 * sm + s1);
+        G(kPy, kOmega) = dt2_sixth * v * (2.0 * cm + c1);
+
+        // θ 行: ∂g_θ/∂ω = dt, 其余为欧拉的单位阵。
         G(kTheta, kOmega) = dt;
         return G;
     }
