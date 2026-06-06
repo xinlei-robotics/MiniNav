@@ -115,6 +115,8 @@ namespace
         std::optional<std::uint64_t> seed;
         std::string integrator_name{"rk4"};
         std::optional<std::filesystem::path> out_path;
+        double q_scale{1.0};
+        double r_scale{1.0};
     };
 
     // CLI 名 → EKF 过程模型积分器。rk4 是生产默认; euler 仅供归因实验
@@ -137,6 +139,8 @@ namespace
         bool disable_viz{false};
         std::string integrator_name{"rk4"};
         std::optional<std::string> out_path_str;
+        double q_scale{1.0};
+        double r_scale{1.0};
 
         app.add_option("--seed", seed_opt,
                        "Master RNG seed; if omitted, seeded from std::random_device.");
@@ -155,6 +159,20 @@ namespace
         app.add_option("--out", out_path_str,
                        "Output CSV path (default: data/traj_v2.csv). Set this to keep the "
                        "euler / rk4 runs in separate files for analyze_v2_integrator.py.");
+
+        app.add_option("--q-scale", q_scale,
+                       "Multiplier on the EKF process noise Q (sensitivity analysis). "
+                       "Default 1.0 keeps the physics-derived value; >1 trusts the motion "
+                       "model less, <1 trusts it more. Does NOT touch the simulated truth.")
+           ->capture_default_str()
+           ->check(CLI::PositiveNumber);
+
+        app.add_option("--r-scale", r_scale,
+                       "Multiplier on the EKF measurement noise R (encoder + IMU). "
+                       "Default 1.0 keeps the physics-derived value; >1 trusts the sensors "
+                       "less. Does NOT touch the simulated measurements.")
+           ->capture_default_str()
+           ->check(CLI::PositiveNumber);
 
         auto* rrd_opt = app.add_option("--rrd", rrd_path_str,
                                        "Save Rerun recording to the given .rrd path.");
@@ -178,6 +196,8 @@ namespace
         opts.preset_name = preset_name;
         opts.disable_viz = disable_viz;
         opts.integrator_name = integrator_name;
+        opts.q_scale = q_scale;
+        opts.r_scale = r_scale;
         if (rrd_path_str.has_value())
         {
             opts.rrd_path = std::filesystem::path{*rrd_path_str};
@@ -212,7 +232,9 @@ namespace
         const std::filesystem::path& path,
         std::uint64_t master_seed,
         std::string_view preset_name,
-        std::string_view integrator_name)
+        std::string_view integrator_name,
+        double q_scale,
+        double r_scale)
     {
         if (path.has_parent_path())
         {
@@ -236,6 +258,8 @@ namespace
         out << "# duration = " << kSimulationTotalTime << '\n';
         out << "# mode = encoder+imu\n";
         out << "# integrator = " << integrator_name << '\n';
+        out << "# q_scale = " << q_scale << '\n';
+        out << "# r_scale = " << r_scale << '\n';
         out << "# generated_at = "
             << std::put_time(std::gmtime(&now_t), "%Y-%m-%dT%H:%M:%SZ")
             << '\n';
@@ -267,7 +291,8 @@ int main(int argc, char** argv)
             std::ostringstream banner;
             banner << "MiniNav V2: preset = " << preset.name
                 << ", seed = " << master_seed << ", mode = encoder+imu"
-                << ", integrator = " << opts.integrator_name;
+                << ", integrator = " << opts.integrator_name
+                << ", q_scale = " << opts.q_scale << ", r_scale = " << opts.r_scale;
             log::info(banner.str());
         }
 
@@ -322,12 +347,15 @@ int main(int argc, char** argv)
         // Σ₀ = diag(1e-6,1e-6,1e-6,1e-2,1e-2,1e-2)。每步执行三阶段:
         //   predict → update_encoder(2D 观测 v,ω) → update_imu(1D 观测 ω+b_ω)
         // 关键: bias 仅在 encoder+IMU 同时在场时可观测(见 ekf.ixx update_* 注释)。
+        // Q 旋钮: 把 (α₁..₄, q_bias_omega) 整体乘 q_scale。Q 对这些参数线性, 故等价于
+        // 缩放整个 Q 矩阵。注意只缩放【EKF 的 Q】, 上面 ActuatorModel 用的是未缩放的
+        // preset.alpha*(真实噪声不变), 这样 q_scale 是纯粹的滤波器调参旋钮。
         Ekf ekf{
             make_initial_ekf_state(),
             ProcessNoiseParams{
-                .alpha1 = preset.alpha1, .alpha2 = preset.alpha2,
-                .alpha3 = preset.alpha3, .alpha4 = preset.alpha4,
-                .q_bias_omega = preset.q_bias_omega,
+                .alpha1 = preset.alpha1 * opts.q_scale, .alpha2 = preset.alpha2 * opts.q_scale,
+                .alpha3 = preset.alpha3 * opts.q_scale, .alpha4 = preset.alpha4 * opts.q_scale,
+                .q_bias_omega = preset.q_bias_omega * opts.q_scale,
             },
             integrator
         };
@@ -446,18 +474,21 @@ int main(int argc, char** argv)
             // EKF 三阶段: predict → update_encoder → update_imu。
             ekf.predict(kSimulationDt);
 
-            // encoder 观测: 解码 → 在预测速度处求 R → Joseph update。
+            // encoder 观测: 解码 → 在预测速度处求 R → (R 旋钮) → Joseph update。
+            // r_scale 只放大/缩小 EKF 对测量的信任, 不动上面真实生成的 dticks/imu_omega。
             const Eigen::Vector2d z_enc = decode_encoder(dticks, enc_noise, kSimulationDt);
             const Eigen::Matrix2d R_enc =
-                encoder_noise_covariance(ekf.mu()(kV), ekf.mu()(kOmega), enc_noise, kSimulationDt);
+                encoder_noise_covariance(ekf.mu()(kV), ekf.mu()(kOmega), enc_noise, kSimulationDt)
+                * opts.r_scale;
             ekf.update_encoder(z_enc, R_enc);
 
             // IMU 观测: 标量 ω, R = σ_imu²
-            const double R_imu = preset.sigma_imu * preset.sigma_imu;
+            const double R_imu = preset.sigma_imu * preset.sigma_imu * opts.r_scale;
             ekf.update_imu(imu_omega, R_imu);
         }
 
-        write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name, opts.integrator_name);
+        write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name,
+                                opts.integrator_name, opts.q_scale, opts.r_scale);
         log::info("Trajectory CSV written to " + csv_path.string());
         log::info("MiniNav V2 simulation ended.");
     }
