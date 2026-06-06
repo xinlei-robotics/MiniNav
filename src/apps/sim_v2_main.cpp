@@ -113,7 +113,16 @@ namespace
         bool disable_viz{false};
         std::string preset_name{"default"};
         std::optional<std::uint64_t> seed;
+        std::string integrator_name{"rk4"};
+        std::optional<std::filesystem::path> out_path;
     };
+
+    // CLI 名 → EKF 过程模型积分器。rk4 是生产默认; euler 仅供归因实验
+    // (analyze_v2_integrator.py)。
+    [[nodiscard]] mininav::Integrator integrator_from_name(std::string_view name) noexcept
+    {
+        return name == "euler" ? mininav::Integrator::Euler : mininav::Integrator::Rk4;
+    }
 
     [[nodiscard]] CliOptions parse_cli(int argc, char** argv)
     {
@@ -126,6 +135,8 @@ namespace
         std::optional<std::string> rrd_path_str;
         std::string preset_name{"default"};
         bool disable_viz{false};
+        std::string integrator_name{"rk4"};
+        std::optional<std::string> out_path_str;
 
         app.add_option("--seed", seed_opt,
                        "Master RNG seed; if omitted, seeded from std::random_device.");
@@ -134,6 +145,16 @@ namespace
                        "Noise preset.")
            ->capture_default_str()
            ->check(CLI::IsMember({"low-noise", "default", "high-noise"}));
+
+        app.add_option("--integrator", integrator_name,
+                       "EKF process-model integrator. rk4 = production; euler is kept only "
+                       "for the RK4-vs-Euler attribution experiment.")
+           ->capture_default_str()
+           ->check(CLI::IsMember({"euler", "rk4"}));
+
+        app.add_option("--out", out_path_str,
+                       "Output CSV path (default: data/traj_v2.csv). Set this to keep the "
+                       "euler / rk4 runs in separate files for analyze_v2_integrator.py.");
 
         auto* rrd_opt = app.add_option("--rrd", rrd_path_str,
                                        "Save Rerun recording to the given .rrd path.");
@@ -156,9 +177,14 @@ namespace
         opts.seed = seed_opt;
         opts.preset_name = preset_name;
         opts.disable_viz = disable_viz;
+        opts.integrator_name = integrator_name;
         if (rrd_path_str.has_value())
         {
             opts.rrd_path = std::filesystem::path{*rrd_path_str};
+        }
+        if (out_path_str.has_value())
+        {
+            opts.out_path = std::filesystem::path{*out_path_str};
         }
         return opts;
     }
@@ -185,7 +211,8 @@ namespace
         const mininav::Trajectory<mininav::SimStateV2>& traj,
         const std::filesystem::path& path,
         std::uint64_t master_seed,
-        std::string_view preset_name)
+        std::string_view preset_name,
+        std::string_view integrator_name)
     {
         if (path.has_parent_path())
         {
@@ -208,6 +235,7 @@ namespace
         out << "# dt = " << kSimulationDt << '\n';
         out << "# duration = " << kSimulationTotalTime << '\n';
         out << "# mode = encoder+imu\n";
+        out << "# integrator = " << integrator_name << '\n';
         out << "# generated_at = "
             << std::put_time(std::gmtime(&now_t), "%Y-%m-%dT%H:%M:%SZ")
             << '\n';
@@ -233,11 +261,13 @@ int main(int argc, char** argv)
         const V2Preset preset = *preset_ptr;
 
         const std::uint64_t master_seed = resolve_seed(opts.seed);
+        const Integrator integrator = integrator_from_name(opts.integrator_name);
 
         {
             std::ostringstream banner;
             banner << "MiniNav V2: preset = " << preset.name
-                << ", seed = " << master_seed << ", mode = encoder+imu";
+                << ", seed = " << master_seed << ", mode = encoder+imu"
+                << ", integrator = " << opts.integrator_name;
             log::info(banner.str());
         }
 
@@ -298,7 +328,8 @@ int main(int argc, char** argv)
                 .alpha1 = preset.alpha1, .alpha2 = preset.alpha2,
                 .alpha3 = preset.alpha3, .alpha4 = preset.alpha4,
                 .q_bias_omega = preset.q_bias_omega,
-            }
+            },
+            integrator
         };
 
         // encoder 观测噪声参数 : 与 WheelEncoderModel 相同(slip_sigma、
@@ -316,8 +347,9 @@ int main(int argc, char** argv)
             static_cast<std::size_t>(kSimulationTotalTime / kSimulationDt) + 1;
         trajectory.reserve(step_count);
 
-        const fs::path csv_path =
-            fs::path{PROJECT_ROOT_DIR} / "data" / "traj_v2.csv";
+        const fs::path csv_path = opts.out_path.has_value()
+            ? *opts.out_path
+            : fs::path{PROJECT_ROOT_DIR} / "data" / "traj_v2.csv";
 
         // ---- Rerun sink (三模式: spawn / save / off) --------------------
         std::optional<RerunSink> sink;
@@ -425,7 +457,7 @@ int main(int argc, char** argv)
             ekf.update_imu(imu_omega, R_imu);
         }
 
-        write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name);
+        write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name, opts.integrator_name);
         log::info("Trajectory CSV written to " + csv_path.string());
         log::info("MiniNav V2 simulation ended.");
     }

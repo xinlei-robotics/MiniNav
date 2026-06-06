@@ -12,6 +12,7 @@
 
 #include <Eigen/Dense>
 
+#include <cmath>
 #include <random>
 
 import mininav.localization.ekf;
@@ -86,4 +87,43 @@ TEST(EkfIntegratorConsistency, PoseMatchesDifferentialDriveStep_RandomSweep)
         const Vec6 mu = state_of(pos(rng), pos(rng), ang(rng), vel(rng), vel(rng));
         expect_pose_matches_integrator(mu, dt_dist(rng));
     }
+}
+
+// --- Euler 路径(归因实验用)-----------------------------------------------
+
+TEST(EkfIntegrator, EulerMatchesClosedFormFirstOrder)
+{
+    constexpr double dt = 0.02;
+    const Vec6 mu = state_of(1.0, -0.5, 0.7, 0.6, 0.4);
+    const Vec6 g = process_model_g(mu, dt, Integrator::Euler);
+
+    EXPECT_DOUBLE_EQ(g(kPx), mu(kPx) + mu(kV) * std::cos(mu(kTheta)) * dt);
+    EXPECT_DOUBLE_EQ(g(kPy), mu(kPy) + mu(kV) * std::sin(mu(kTheta)) * dt);
+    EXPECT_DOUBLE_EQ(g(kTheta), mu(kTheta) + mu(kOmega) * dt);
+}
+
+TEST(EkfIntegrator, EulerAndRk4DifferWhenTurning)
+{
+    // 转弯(ω≠0)时 Simpson 与一阶欧拉对位置的积分必然不同 —— 这保证 --integrator
+    // 开关确实改变了滤波器行为, 归因实验才有意义。
+    constexpr double dt = 0.05;
+    const Vec6 mu = state_of(0.0, 0.0, 0.3, 1.0, 1.5);
+
+    const Vec6 g_euler = process_model_g(mu, dt, Integrator::Euler);
+    const Vec6 g_rk4 = process_model_g(mu, dt, Integrator::Rk4);
+
+    EXPECT_GT(std::hypot(g_rk4(kPx) - g_euler(kPx), g_rk4(kPy) - g_euler(kPy)), 1e-6);
+}
+
+TEST(EkfIntegrator, EulerAndRk4CoincideWhenNotTurning)
+{
+    // ω=0 时步内航向不变, Simpson 三个采样点重合 ⇒ RK4 退化为欧拉, 二者逐位相等。
+    constexpr double dt = 0.05;
+    const Vec6 mu = state_of(0.2, 0.4, 1.1, 0.8, 0.0);
+
+    const Vec6 g_euler = process_model_g(mu, dt, Integrator::Euler);
+    const Vec6 g_rk4 = process_model_g(mu, dt, Integrator::Rk4);
+
+    EXPECT_DOUBLE_EQ(g_rk4(kPx), g_euler(kPx));
+    EXPECT_DOUBLE_EQ(g_rk4(kPy), g_euler(kPy));
 }

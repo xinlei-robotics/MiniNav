@@ -24,40 +24,55 @@ export namespace mininav
     // ===========================================================================
 
     // ---------------------------------------------------------------------------
+    // Integrator: 过程模型 g 的数值积分方法。
+    //
+    //   Rk4   —— 默认/生产路径; 与仿真真值 differential_drive_step 共用同一个
+    //            rk4_step (见 ekf_integrator_consistency_tests)。
+    //   Euler —— 一阶前向欧拉; 保留它纯粹是为了 RK4-vs-Euler 的归因实验
+    //            (analyze_v2_integrator.py), 让"积分器对估计精度的影响"可被
+    //            单独量化。两条路径的解析 Jacobian 都由有限差分测试守护。
+    // ---------------------------------------------------------------------------
+    enum class Integrator
+    {
+        Euler,
+        Rk4,
+    };
+
+    // ---------------------------------------------------------------------------
     // 过程模型 g: 6D 常速(constant-velocity)运动模型 + gyro bias 随机游走。
+    // (v, ω, b_ω) 为恒等映射, θ 推进 ω·dt(精确, wrap 留给 predict())。
+    // 位置 (px, py) 的推进取决于 integrator:
     //
-    // 位置/航向用 RK4 积分(与仿真真值 differential_drive_step 同一个 rk4_step),
-    // (v, ω, b_ω) 为恒等映射。由于一步内 (v, ω) 视为常量, RK4 对位置塌缩为 Simpson 求积:
-    //
-    //   g(x) = [ px + (dt/6)·v·[cosθ + 4·cos(θ+½ωdt) + cos(θ+ωdt)]
-    //            py + (dt/6)·v·[sinθ + 4·sin(θ+½ωdt) + sin(θ+ωdt)]
-    //            θ  + ω·dt
-    //            v
-    //            ω
-    //            b_ω           ]
+    //   Rk4   : 一步内 (v,ω) 常量 ⇒ RK4 塌缩为 Simpson 求积
+    //           px += (dt/6)·v·[cosθ + 4·cos(θ+½ωdt) + cos(θ+ωdt)]   (py 用 sin)
+    //   Euler : px += v·cosθ·dt,  py += v·sinθ·dt
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt) noexcept;
+    [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt,
+                                       Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 解析 Jacobian G = ∂g/∂x (RK4/Simpson 过程模型的精确偏导)。
+    // 解析 Jacobian G = ∂g/∂x。仅 px、py 两行随 integrator 变化; 其余为单位阵
+    // (px,py 对自身=1; v,ω,b_ω 行恒等), 且恒有 G(θ,ω)=dt。
     //
-    // 记 (c₀,cₘ,c₁) = cos(θ, θ+½ωdt, θ+ωdt), (s₀,sₘ,s₁) 同理:
+    //   Rk4 (记 (c₀,cₘ,c₁)=cos(θ, θ+½ωdt, θ+ωdt), (s₀,sₘ,s₁) 同理):
+    //     G(px,θ)=(dt/6)·v·(−s₀−4sₘ−s₁)  G(px,v)=(dt/6)·(c₀+4cₘ+c₁)
+    //     G(px,ω)=−(dt²/6)·v·(2sₘ+s₁)     ← RK4 相对欧拉新增的 O(dt²) 耦合
+    //     G(py,θ)=(dt/6)·v·(c₀+4cₘ+c₁)    G(py,v)=(dt/6)·(s₀+4sₘ+s₁)
+    //     G(py,ω)=(dt²/6)·v·(2cₘ+c₁)
+    //   Euler:
+    //     G(px,θ)=−v·sinθ·dt  G(px,v)=cosθ·dt
+    //     G(py,θ)= v·cosθ·dt  G(py,v)=sinθ·dt   (G(px,ω)=G(py,ω)=0)
     //
-    //   G(px,θ) = (dt/6)·v·(−s₀−4sₘ−s₁)   G(px,v) = (dt/6)·(c₀+4cₘ+c₁)
-    //   G(px,ω) = −(dt²/6)·v·(2sₘ+s₁)      ← RK4 相对欧拉新增的 O(dt²) 耦合
-    //   G(py,θ) = (dt/6)·v·(c₀+4cₘ+c₁)     G(py,v) = (dt/6)·(s₀+4sₘ+s₁)
-    //   G(py,ω) = (dt²/6)·v·(2cₘ+c₁)
-    //   G(θ,ω)  = dt
-    //   其余为单位阵 (px,py 对自身=1; v,ω,b_ω 行恒等)。
-    //
-    // ω→0 极限下退回欧拉的 (−v·sinθ·dt, cosθ·dt, v·cosθ·dt, sinθ·dt)。
+    // ω→0 极限下 Rk4 退回 Euler。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt) noexcept;
+    [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt,
+                                          Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 数值 Jacobian: 对 process_model_g 做逐列中心差分。
+    // 数值 Jacobian: 对 process_model_g(·, integrator) 做逐列中心差分。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat6 numeric_process_jacobian(const Vec6& mu, double dt, double eps) noexcept;
+    [[nodiscard]] Mat6 numeric_process_jacobian(const Vec6& mu, double dt, double eps,
+                                                Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
     // ProcessNoiseParams: 过程噪声 Q 的物理来源参数。
@@ -120,10 +135,14 @@ export namespace mininav
     class Ekf
     {
     public:
-        Ekf(EkfState6 initial_state, ProcessNoiseParams noise) noexcept
-            : state_{std::move(initial_state)}, noise_{noise}
+        // integrator 缺省 Rk4(生产路径); 传 Euler 仅用于归因实验。
+        Ekf(EkfState6 initial_state, ProcessNoiseParams noise,
+            Integrator integrator = Integrator::Rk4) noexcept
+            : state_{std::move(initial_state)}, noise_{noise}, integrator_{integrator}
         {
         }
+
+        [[nodiscard]] Integrator integrator() const noexcept { return integrator_; }
 
         // -----------------------------------------------------------------------
         // predict: 一步预测
@@ -177,5 +196,6 @@ export namespace mininav
     private:
         EkfState6 state_;
         ProcessNoiseParams noise_;
+        Integrator integrator_{Integrator::Rk4};
     };
 }

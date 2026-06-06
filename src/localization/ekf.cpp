@@ -16,18 +16,26 @@ import mininav.core.types;
 
 namespace mininav
 {
-    Vec6 process_model_g(const Vec6& mu, const double dt) noexcept
+    Vec6 process_model_g(const Vec6& mu, const double dt, const Integrator integrator) noexcept
     {
         const double th = mu(kTheta);
         const double v = mu(kV);
         const double w = mu(kOmega);
 
-        const Pose2D next = rk4_step(Pose2D{mu(kPx), mu(kPy), th}, Twist2D{v, w}, dt);
-
         Vec6 out;
-        out(kPx) = next.x();
-        out(kPy) = next.y();
-        // (v, ω) 常量 ⇒ yaw_dot ≡ ω, RK4 的 θ 解精确等于 θ + ω·dt。
+        if (integrator == Integrator::Rk4)
+        {
+            // 位置/航向与仿真真值共用同一个 RK4 积分器(单一积分器来源)。
+            const Pose2D next = rk4_step(Pose2D{mu(kPx), mu(kPy), th}, Twist2D{v, w}, dt);
+            out(kPx) = next.x();
+            out(kPy) = next.y();
+        }
+        else // Integrator::Euler
+        {
+            out(kPx) = mu(kPx) + v * std::cos(th) * dt;
+            out(kPy) = mu(kPy) + v * std::sin(th) * dt;
+        }
+        // (v, ω) 常量 ⇒ yaw_dot ≡ ω, θ 解精确等于 θ + ω·dt(RK4/Euler 一致)。
         out(kTheta) = th + w * dt;
         out(kV) = v;
         out(kOmega) = w;
@@ -35,44 +43,53 @@ namespace mininav
         return out;
     }
 
-    Mat6 process_jacobian_G(const Vec6& mu, const double dt) noexcept
+    Mat6 process_jacobian_G(const Vec6& mu, const double dt, const Integrator integrator) noexcept
     {
         const double th = mu(kTheta);
         const double v = mu(kV);
         const double w = mu(kOmega);
 
-        // (v, ω) 在一步内为常量, 故 RK4 的 stage 航向只有三个取值:
-        //   θ、θ+½ω·dt、θ+ω·dt。RK4 在此塌缩为对 ∫v·cos/sin(θ+ωτ)dτ 的 Simpson 求积:
-        //   Δx = (dt/6)·v·[c₀ + 4·cₘ + c₁],  Δy = (dt/6)·v·[s₀ + 4·sₘ + s₁]。
-        // 下面是它对状态的解析偏导(由 MatchesFiniteDifference 测试守护)。
-        const double thm = th + 0.5 * w * dt;
-        const double th1 = th + w * dt;
-
-        const double c0 = std::cos(th), s0 = std::sin(th);
-        const double cm = std::cos(thm), sm = std::sin(thm);
-        const double c1 = std::cos(th1), s1 = std::sin(th1);
-
-        const double sixth = dt / 6.0;
-        const double dt2_sixth = dt * dt / 6.0;
-
         Mat6 G = Mat6::Identity();
+        G(kTheta, kOmega) = dt; // θ 解精确, 与积分器无关。
 
-        // px 行: ∂gₓ/∂{θ, v, ω}。∂gₓ/∂ω 是 RK4 相对欧拉新增的 O(dt²) 耦合。
-        G(kPx, kTheta) = sixth * v * (-s0 - 4.0 * sm - s1);
-        G(kPx, kV) = sixth * (c0 + 4.0 * cm + c1);
-        G(kPx, kOmega) = -dt2_sixth * v * (2.0 * sm + s1);
+        if (integrator == Integrator::Rk4)
+        {
+            // (v, ω) 在一步内为常量, 故 RK4 的 stage 航向只有三个取值:
+            //   θ、θ+½ω·dt、θ+ω·dt。RK4 在此塌缩为对 ∫v·cos/sin(θ+ωτ)dτ 的 Simpson 求积:
+            //   Δx = (dt/6)·v·[c₀ + 4·cₘ + c₁],  Δy = (dt/6)·v·[s₀ + 4·sₘ + s₁]。
+            // 下面是它对状态的解析偏导(由 MatchesFiniteDifference 测试守护)。
+            const double thm = th + 0.5 * w * dt;
+            const double th1 = th + w * dt;
 
-        // py 行。
-        G(kPy, kTheta) = sixth * v * (c0 + 4.0 * cm + c1);
-        G(kPy, kV) = sixth * (s0 + 4.0 * sm + s1);
-        G(kPy, kOmega) = dt2_sixth * v * (2.0 * cm + c1);
+            const double c0 = std::cos(th), s0 = std::sin(th);
+            const double cm = std::cos(thm), sm = std::sin(thm);
+            const double c1 = std::cos(th1), s1 = std::sin(th1);
 
-        // θ 行: ∂g_θ/∂ω = dt, 其余为欧拉的单位阵。
-        G(kTheta, kOmega) = dt;
+            const double sixth = dt / 6.0;
+            const double dt2_sixth = dt * dt / 6.0;
+
+            // px 行: ∂gₓ/∂{θ, v, ω}。∂gₓ/∂ω 是 RK4 相对欧拉新增的 O(dt²) 耦合。
+            G(kPx, kTheta) = sixth * v * (-s0 - 4.0 * sm - s1);
+            G(kPx, kV) = sixth * (c0 + 4.0 * cm + c1);
+            G(kPx, kOmega) = -dt2_sixth * v * (2.0 * sm + s1);
+
+            // py 行。
+            G(kPy, kTheta) = sixth * v * (c0 + 4.0 * cm + c1);
+            G(kPy, kV) = sixth * (s0 + 4.0 * sm + s1);
+            G(kPy, kOmega) = dt2_sixth * v * (2.0 * cm + c1);
+        }
+        else // Integrator::Euler — px/py 仅依赖步首航向, 无 ∂/∂ω 耦合。
+        {
+            G(kPx, kTheta) = -v * std::sin(th) * dt;
+            G(kPx, kV) = std::cos(th) * dt;
+            G(kPy, kTheta) = v * std::cos(th) * dt;
+            G(kPy, kV) = std::sin(th) * dt;
+        }
         return G;
     }
 
-    Mat6 numeric_process_jacobian(const Vec6& mu, const double dt, const double eps) noexcept
+    Mat6 numeric_process_jacobian(const Vec6& mu, const double dt, const double eps,
+                                  const Integrator integrator) noexcept
     {
         Mat6 G_num = Mat6::Zero();
         for (int j = 0; j < kStateDim; ++j)
@@ -81,7 +98,9 @@ namespace mininav
             Vec6 minus = mu;
             plus(j) += eps;
             minus(j) -= eps;
-            const Vec6 col = (process_model_g(plus, dt) - process_model_g(minus, dt)) / (2.0 * eps);
+            const Vec6 col =
+                (process_model_g(plus, dt, integrator) - process_model_g(minus, dt, integrator))
+                / (2.0 * eps);
             G_num.col(j) = col;
         }
         return G_num;
@@ -132,12 +151,12 @@ namespace mininav
     {
         assert(dt > 0.0 && "Ekf::predict requires a strictly positive dt");
 
-        // 预测前的均值处求 Jacobian 与过程噪声
-        const Mat6 G = process_jacobian_G(state_.mu, dt);
+        // 预测前的均值处求 Jacobian 与过程噪声(g 与 G 用同一个 integrator)
+        const Mat6 G = process_jacobian_G(state_.mu, dt, integrator_);
         const Mat6 Q = process_noise_Q(state_.mu, noise_);
 
         // 均值预测
-        state_.mu = process_model_g(state_.mu, dt);
+        state_.mu = process_model_g(state_.mu, dt, integrator_);
         state_.mu(kTheta) = wrap_angle(state_.mu(kTheta));
 
         // 协方差预测: Σ̄ = G·Σ·Gᵀ + Q。
