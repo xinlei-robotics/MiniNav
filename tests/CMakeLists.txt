@@ -63,6 +63,7 @@ add_executable(localization_tests
         localization/ekf_imu_update_tests.cpp
         localization/ekf_fusion_rmse_tests.cpp
         localization/ekf_bias_observability_tests.cpp
+        localization/ekf_nis_tests.cpp
 )
 
 target_link_libraries(localization_tests

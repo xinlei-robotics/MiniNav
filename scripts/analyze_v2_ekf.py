@@ -67,6 +67,27 @@ def recover_true_bias(metadata: dict[str, str]) -> float | None:
     return _PRESET_TRUE_BIAS.get(metadata.get("preset", ""))
 
 
+# χ² 分布 95% 双侧单样本区间 [2.5%, 97.5%] 分位点(无 scipy 依赖, 硬编码)。
+#   dof=2 有闭式: χ²₂ 的 CDF = 1−e^{−x/2} ⇒ 分位点 x = −2·ln(1−q),
+#                故 [−2ln0.975, −2ln0.025] = [0.05064, 7.37776]。
+#   dof=1 无初等闭式, 用标准数值常量。
+_CHI2_95: dict[int, tuple[float, float]] = {
+    1: (0.0009820691, 5.0238862),
+    2: (0.0506356, 7.3777589),
+}
+
+
+def nis_consistency(nis: np.ndarray, dof: int) -> tuple[float, float, float, float]:
+    """返回 (mean, 区间下界, 区间上界, 落入 95% χ² 区间的比例%)。
+
+    一致(consistent)的 filter: mean(NIS) ≈ dof, 且约 95% 的样本落在区间内。
+    显著偏高 → Q/R 设得过小(过度自信); 偏低 → 设得过大(过度保守)。
+    """
+    lo, hi = _CHI2_95[dof]
+    inside = float(np.mean((nis >= lo) & (nis <= hi))) * 100.0
+    return float(np.mean(nis)), lo, hi, inside
+
+
 def parse_metadata(path: Path) -> dict[str, str]:
     """CSV 文件前置的 # ... 注释行,提取 key=value 元信息。"""
     metadata: dict[str, str] = {}
@@ -412,6 +433,51 @@ def plot_bias_learning(df: pd.DataFrame, metadata: dict[str, str],
     plt.close(fig)
 
 
+def plot_nis(df: pd.DataFrame, metadata: dict[str, str], out_path: Path) -> None:
+    """encoder / IMU 的 NIS 时间序列 + χ² 95% 区间带。
+
+    这是 filter consistency 的"招牌诊断图": NIS 主体应落在红色虚线区间内、
+    围绕 dof 参考线波动。大量越界(尤其持续偏高)说明 Q/R 与真实噪声不匹配,
+    是 --q-scale / --r-scale 调参的依据。
+    """
+    t = df["t"].to_numpy()
+    fig, (ax_e, ax_i) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+
+    for ax, col, dof, name, color in (
+        (ax_e, "nis_encoder", 2, "encoder", "#2ca02c"),
+        (ax_i, "nis_imu", 1, "IMU", "#1f77b4"),
+    ):
+        nis = df[col].to_numpy()
+        mean, lo, hi, inside = nis_consistency(nis, dof)
+
+        ax.plot(t, nis, color=color, linewidth=0.7, alpha=0.75, label=f"{name} NIS")
+        ax.axhline(dof, color="gray", linewidth=1.0, label=f"dof = {dof}  (E[NIS])")
+        ax.axhline(lo, color="#d62728", linewidth=1.0, linestyle="--")
+        ax.axhline(hi, color="#d62728", linewidth=1.0, linestyle="--",
+                   label="χ² 95% interval")
+        ax.set_ylabel(f"{name} NIS")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+        ax.set_title(
+            f"{name}: mean = {mean:.2f} (expect {dof}); "
+            f"{inside:.1f}% of samples within 95% χ² band")
+        # NIS 偶有大尖峰(初始 transient / 转弯), 收紧 y 轴让主体可读。
+        ax.set_ylim(0.0, max(hi * 1.8, float(np.percentile(nis, 99))))
+
+    ax_i.set_xlabel("time [s]")
+    preset = metadata.get("preset", "?")
+    seed = metadata.get("seed", "?")
+    q_scale = metadata.get("q_scale", "1")
+    r_scale = metadata.get("r_scale", "1")
+    fig.suptitle(
+        f"MiniNav V2 — NIS consistency check (PR5c)\n"
+        f"preset = {preset}, seed = {seed}, q_scale = {q_scale}, r_scale = {r_scale}")
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=140)
+    plt.close(fig)
+
+
 def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
     mode = metadata.get("mode", "predict-only")
     print("=" * 64)
@@ -460,6 +526,15 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str]) -> None:
         shrink = f"{sbb0 / sbb_f:.0f}x 收缩" if sbb_f > 0 else "收缩"
         print(f"  bias covariance Σ_bb     = {sbb0:.4e} -> {sbb_f:.4e} (rad/s)²  "
               f"({shrink}; fusion 使 bias 可观测)")
+
+        # NIS consistency(PR5c): mean ≈ dof 且约 95% 样本落入 χ² 区间 → filter 一致。
+        if "nis_encoder" in df.columns and "nis_imu" in df.columns:
+            enc_mean, _, _, enc_in = nis_consistency(df["nis_encoder"].to_numpy(), dof=2)
+            imu_mean, _, _, imu_in = nis_consistency(df["nis_imu"].to_numpy(), dof=1)
+            print(f"  NIS encoder (dof 2)      mean = {enc_mean:.3f},  "
+                  f"{enc_in:.1f}% in 95% χ² band")
+            print(f"  NIS imu     (dof 1)      mean = {imu_mean:.3f},  "
+                  f"{imu_in:.1f}% in 95% χ² band")
     elif mode == "encoder-update":
         odom_err = np.hypot(df["odom_x"].iloc[-1] - df["truth_x"].iloc[-1],
                             df["odom_y"].iloc[-1] - df["truth_y"].iloc[-1])
@@ -522,6 +597,9 @@ def main() -> None:
         plot_fusion_rmse_over_time(df, metadata, args.output / "v2_fusion_rmse_over_time.png")
         # gyro bias 在线估计(收敛 + Σ_bb 塌缩)。
         plot_bias_learning(df, metadata, args.output / "v2_bias_learning.png")
+        # NIS consistency 检验(PR5c)。
+        if "nis_encoder" in df.columns and "nis_imu" in df.columns:
+            plot_nis(df, metadata, args.output / "v2_nis_consistency.png")
     elif mode == "encoder-update":
         # 三轨迹叠加 + 协方差分离(observability)。
         plot_trajectory_overlay(df, metadata, args.output / "v2_encoder_trajectory.png")

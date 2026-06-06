@@ -170,7 +170,7 @@ namespace mininav
             "covariance lost symmetric-PSD property after predict");
     }
 
-    void Ekf::update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas)
+    double Ekf::update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas)
     {
         // 观测矩阵 H (2×6): 选出 (v, ω) 两行, bias 列为 0。显式构造完整 H
         // (而非手工切片)让下面的 Joseph form 与教科书逐字对应、可读性最佳; 6D 下
@@ -184,10 +184,14 @@ namespace mininav
 
         // innovation covariance S = H·Σ̄·Hᵀ + R (2×2)。
         const Eigen::Matrix2d S = H * state_.Sigma * H.transpose() + R_meas;
+        const Eigen::Matrix2d S_inv = S.inverse(); // S 是 2×2, 直接求逆数值稳妥。
 
-        // Kalman gain K = Σ̄·Hᵀ·S⁻¹ (6×2)。S 是 2×2, 直接求逆数值稳妥。
+        // NIS = yᵀ·S⁻¹·y(consistency 诊断, 在更新均值前用预测期量算)。
+        const double nis = y.dot(S_inv * y);
+
+        // Kalman gain K = Σ̄·Hᵀ·S⁻¹ (6×2)。
         const Eigen::Matrix<double, kStateDim, 2> K =
-            state_.Sigma * H.transpose() * S.inverse();
+            state_.Sigma * H.transpose() * S_inv;
 
         // 均值更新。
         state_.mu += K * y;
@@ -206,9 +210,11 @@ namespace mininav
 
         assert(is_symmetric_positive_definite(state_.Sigma, 1e-9) &&
             "covariance lost symmetric-PSD property after encoder update");
+
+        return nis;
     }
 
-    void Ekf::update_imu(const double z, const double R_imu)
+    double Ekf::update_imu(const double z, const double R_imu)
     {
         assert(R_imu > 0.0 && "Ekf::update_imu requires strictly positive R_imu "
             "(use the encoder quantization-floor trick if a zero-floor R is needed)");
@@ -220,6 +226,7 @@ namespace mininav
             // 未启用的 bias 状态吸收 gyro 白噪声。
             const double y = z - state_.mu(kOmega);
             const double S = state_.Sigma(kOmega, kOmega) + R_imu;
+            const double nis = y * y / S; // NIS = y²/S(1-DOF)。
             const Vec6 K = state_.Sigma.col(kOmega) / S;
 
             state_.mu += K * y;
@@ -233,7 +240,7 @@ namespace mininav
 
             assert(is_symmetric_positive_definite(state_.Sigma, 1e-9) &&
                 "covariance lost symmetric-PSD property after IMU update");
-            return;
+            return nis;
         }
 
         // 1D 观测的 Kalman update — H_imu = [0,0,0,0,1,1], 即 Hᵀ = e_ω + e_b。
@@ -250,6 +257,9 @@ namespace mininav
 
         // S = H·(Σ̄·Hᵀ) + R = SHt(ω) + SHt(b) + R_imu (标量 innovation 方差)。
         const double S = SHt(kOmega) + SHt(kBiasOmega) + R_imu;
+
+        // NIS = y²/S(1-DOF), 在更新均值前用预测期量算。
+        const double nis = y * y / S;
 
         // K = (Σ̄·Hᵀ) / S (6-vector)。
         const Vec6 K = SHt / S;
@@ -272,5 +282,7 @@ namespace mininav
 
         assert(is_symmetric_positive_definite(state_.Sigma, 1e-9) &&
             "covariance lost symmetric-PSD property after IMU update");
+
+        return nis;
     }
 }

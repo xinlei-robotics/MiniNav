@@ -169,8 +169,11 @@ export namespace mininav
         //   z      = (v̂, ω̂), 由 decode_encoder 从 EncoderTicks 解码而来
         //   R_meas = 2×2 观测噪声, 由 encoder_noise_covariance 从物理参数推导
         // EKF 在此传感器无关: 它只接受 (z, R), 不关心 z 来自 encoder 还是别处。
+        //
+        // 返回值: 本次更新的 NIS(Normalized Innovation Squared) = yᵀ·S⁻¹·y。
+        // 用于 filter consistency 诊断 —— 理论上服从自由度 2 的 χ² 分布。
         // -----------------------------------------------------------------------
-        void update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
+        double update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
 
         // -----------------------------------------------------------------------
         // update_imu: IMU观测的 Kalman update(含 bias)。
@@ -186,8 +189,10 @@ export namespace mininav
         //   K = (Σ̄·Hᵀ) / S
         //   μ = μ̄ + K·(z − ẑ)
         //   Σ = (I−K·H)·Σ̄·(I−K·H)ᵀ + K·R·Kᵀ
+        //
+        // 返回值: 本次更新的 NIS = y²/S(标量观测)。理论上服从自由度 1 的 χ² 分布。
         // -----------------------------------------------------------------------
-        void update_imu(double z, double R_imu);
+        double update_imu(double z, double R_imu);
 
         [[nodiscard]] const EkfState6& state() const noexcept { return state_; }
         [[nodiscard]] const Vec6& mu() const noexcept { return state_.mu; }

@@ -68,7 +68,7 @@ namespace mininav
     }
 
     // -------------------------------------------------------------------------
-    // SimStateV2: V1 的 13 列 + 6 列 EKF 均值 + 7 列协方差 = 26 列。
+    // SimStateV2: V1 的 13 列 + imu_omega + 6 列 EKF 均值 + 7 列协方差 + 2 列 NIS = 28 列。
     //
     // ekf_cov 是 6×6, 索引约定: 0=px 1=py 2=θ 3=v 4=ω 5=b_ω。
     //
@@ -87,7 +87,8 @@ namespace mininav
             "odom_x,odom_y,odom_yaw,"
             "ekf_x,ekf_y,ekf_yaw,ekf_v,ekf_omega,ekf_bias_omega,"
             "ekf_sigma_xx,ekf_sigma_yy,ekf_sigma_xy,"
-            "ekf_sigma_thth,ekf_sigma_vv,ekf_sigma_ww,ekf_sigma_bb";
+            "ekf_sigma_thth,ekf_sigma_vv,ekf_sigma_ww,ekf_sigma_bb,"
+            "nis_encoder,nis_imu";
     }
 
     std::string csv_row(const SimStateV2& record)
@@ -120,7 +121,9 @@ namespace mininav
             << record.ekf_cov(2, 2) << ',' // sigma_thth
             << record.ekf_cov(3, 3) << ',' // sigma_vv
             << record.ekf_cov(4, 4) << ',' // sigma_ww
-            << record.ekf_cov(5, 5); // sigma_bb
+            << record.ekf_cov(5, 5) << ',' // sigma_bb
+            << record.nis_encoder << ','
+            << record.nis_imu;
 
         return os.str();
     }

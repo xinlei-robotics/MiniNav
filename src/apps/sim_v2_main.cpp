@@ -420,8 +420,9 @@ int main(int argc, char** argv)
             const double imu_omega = imu.measure(true_velocity.w());
 
             // 记录本步开始时的 EKF belief 快照(mirror 了 odom_pose 的
-            // "log-then-update" 约定: 末尾才推进)。
-            const SimStateV2 state{
+            // "log-then-update" 约定: 末尾才推进)。NIS 是本步 update 的产物,
+            // 在三阶段更新后回填, 故 append 推迟到循环体末尾。
+            SimStateV2 state{
                 .t = t,
                 .cmd = cmd,
                 .true_velocity = true_velocity,
@@ -432,7 +433,6 @@ int main(int argc, char** argv)
                 .ekf_mean = ekf.mu(),
                 .ekf_cov = ekf.Sigma(),
             };
-            trajectory.append(state);
 
             if (sink.has_value())
             {
@@ -480,11 +480,14 @@ int main(int argc, char** argv)
             const Eigen::Matrix2d R_enc =
                 encoder_noise_covariance(ekf.mu()(kV), ekf.mu()(kOmega), enc_noise, kSimulationDt)
                 * opts.r_scale;
-            ekf.update_encoder(z_enc, R_enc);
+            state.nis_encoder = ekf.update_encoder(z_enc, R_enc);
 
             // IMU 观测: 标量 ω, R = σ_imu²
             const double R_imu = preset.sigma_imu * preset.sigma_imu * opts.r_scale;
-            ekf.update_imu(imu_omega, R_imu);
+            state.nis_imu = ekf.update_imu(imu_omega, R_imu);
+
+            // 本步快照(prior belief)+ 本步 NIS 一并落盘。
+            trajectory.append(state);
         }
 
         write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name,
