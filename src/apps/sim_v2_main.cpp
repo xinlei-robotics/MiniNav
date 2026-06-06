@@ -117,6 +117,7 @@ namespace
         std::optional<std::filesystem::path> out_path;
         double q_scale{1.0};
         double r_scale{1.0};
+        bool no_bias{false};
     };
 
     // CLI 名 → EKF 过程模型积分器。rk4 是生产默认; euler 仅供归因实验
@@ -141,6 +142,7 @@ namespace
         std::optional<std::string> out_path_str;
         double q_scale{1.0};
         double r_scale{1.0};
+        bool no_bias{false};
 
         app.add_option("--seed", seed_opt,
                        "Master RNG seed; if omitted, seeded from std::random_device.");
@@ -174,6 +176,11 @@ namespace
            ->capture_default_str()
            ->check(CLI::PositiveNumber);
 
+        app.add_flag("--no-bias", no_bias,
+                     "Disable online gyro-bias estimation (force q_bias_omega = 0, the "
+                     "no-bias compatibility path). Produces the 'ekf (no bias)' baseline for "
+                     "the three-way RMSE comparison against 'ekf_with_bias'.");
+
         auto* rrd_opt = app.add_option("--rrd", rrd_path_str,
                                        "Save Rerun recording to the given .rrd path.");
 
@@ -198,6 +205,7 @@ namespace
         opts.integrator_name = integrator_name;
         opts.q_scale = q_scale;
         opts.r_scale = r_scale;
+        opts.no_bias = no_bias;
         if (rrd_path_str.has_value())
         {
             opts.rrd_path = std::filesystem::path{*rrd_path_str};
@@ -234,7 +242,8 @@ namespace
         std::string_view preset_name,
         std::string_view integrator_name,
         double q_scale,
-        double r_scale)
+        double r_scale,
+        bool bias_on)
     {
         if (path.has_parent_path())
         {
@@ -260,6 +269,7 @@ namespace
         out << "# integrator = " << integrator_name << '\n';
         out << "# q_scale = " << q_scale << '\n';
         out << "# r_scale = " << r_scale << '\n';
+        out << "# bias = " << (bias_on ? "on" : "off") << '\n';
         out << "# generated_at = "
             << std::put_time(std::gmtime(&now_t), "%Y-%m-%dT%H:%M:%SZ")
             << '\n';
@@ -292,7 +302,8 @@ int main(int argc, char** argv)
             banner << "MiniNav V2: preset = " << preset.name
                 << ", seed = " << master_seed << ", mode = encoder+imu"
                 << ", integrator = " << opts.integrator_name
-                << ", q_scale = " << opts.q_scale << ", r_scale = " << opts.r_scale;
+                << ", q_scale = " << opts.q_scale << ", r_scale = " << opts.r_scale
+                << ", bias = " << (opts.no_bias ? "off" : "on");
             log::info(banner.str());
         }
 
@@ -350,12 +361,15 @@ int main(int argc, char** argv)
         // Q 旋钮: 把 (α₁..₄, q_bias_omega) 整体乘 q_scale。Q 对这些参数线性, 故等价于
         // 缩放整个 Q 矩阵。注意只缩放【EKF 的 Q】, 上面 ActuatorModel 用的是未缩放的
         // preset.alpha*(真实噪声不变), 这样 q_scale 是纯粹的滤波器调参旋钮。
+        // --no-bias: 强制 q_bias_omega = 0 → update_imu 走无 bias 兼容路径(不在线
+        // 估计 gyro bias), 作为 "ekf (no bias)" 基线与默认的 "ekf_with_bias" 对比。
+        const double q_bias_omega = opts.no_bias ? 0.0 : preset.q_bias_omega * opts.q_scale;
         Ekf ekf{
             make_initial_ekf_state(),
             ProcessNoiseParams{
                 .alpha1 = preset.alpha1 * opts.q_scale, .alpha2 = preset.alpha2 * opts.q_scale,
                 .alpha3 = preset.alpha3 * opts.q_scale, .alpha4 = preset.alpha4 * opts.q_scale,
-                .q_bias_omega = preset.q_bias_omega * opts.q_scale,
+                .q_bias_omega = q_bias_omega,
             },
             integrator
         };
@@ -491,7 +505,7 @@ int main(int argc, char** argv)
         }
 
         write_csv_with_metadata(trajectory, csv_path, master_seed, preset.name,
-                                opts.integrator_name, opts.q_scale, opts.r_scale);
+                                opts.integrator_name, opts.q_scale, opts.r_scale, !opts.no_bias);
         log::info("Trajectory CSV written to " + csv_path.string());
         log::info("MiniNav V2 simulation ended.");
     }
