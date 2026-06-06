@@ -24,33 +24,55 @@ export namespace mininav
     // ===========================================================================
 
     // ---------------------------------------------------------------------------
+    // Integrator: 过程模型 g 的数值积分方法。
+    //
+    //   Rk4   —— 默认/生产路径; 与仿真真值 differential_drive_step 共用同一个
+    //            rk4_step (见 ekf_integrator_consistency_tests)。
+    //   Euler —— 一阶前向欧拉; 保留它纯粹是为了 RK4-vs-Euler 的归因实验
+    //            (analyze_integrator.py), 让"积分器对估计精度的影响"可被
+    //            单独量化。两条路径的解析 Jacobian 都由有限差分测试守护。
+    // ---------------------------------------------------------------------------
+    enum class Integrator
+    {
+        Euler,
+        Rk4,
+    };
+
+    // ---------------------------------------------------------------------------
     // 过程模型 g: 6D 常速(constant-velocity)运动模型 + gyro bias 随机游走。
+    // (v, ω, b_ω) 为恒等映射, θ 推进 ω·dt(精确, wrap 留给 predict())。
+    // 位置 (px, py) 的推进取决于 integrator:
     //
-    //   g(x) = [ px + v·cosθ·dt
-    //            py + v·sinθ·dt
-    //            θ  + ω·dt
-    //            v
-    //            ω
-    //            b_ω           ]
+    //   Rk4   : 一步内 (v,ω) 常量 ⇒ RK4 塌缩为 Simpson 求积
+    //           px += (dt/6)·v·[cosθ + 4·cos(θ+½ωdt) + cos(θ+ωdt)]   (py 用 sin)
+    //   Euler : px += v·cosθ·dt,  py += v·sinθ·dt
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt) noexcept;
+    [[nodiscard]] Vec6 process_model_g(const Vec6& mu, double dt,
+                                       Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 解析 Jacobian G = ∂g/∂x
+    // 解析 Jacobian G = ∂g/∂x。仅 px、py 两行随 integrator 变化; 其余为单位阵
+    // (px,py 对自身=1; v,ω,b_ω 行恒等), 且恒有 G(θ,ω)=dt。
     //
-    //   G = | 1  0  -v·sinθ·dt   cosθ·dt   0   0 |
-    //       | 0  1   v·cosθ·dt   sinθ·dt   0   0 |
-    //       | 0  0      1           0      dt  0 |
-    //       | 0  0      0           1      0   0 |
-    //       | 0  0      0           0      1   0 |
-    //       | 0  0      0           0      0   1 |
+    //   Rk4 (记 (c₀,cₘ,c₁)=cos(θ, θ+½ωdt, θ+ωdt), (s₀,sₘ,s₁) 同理):
+    //     G(px,θ)=(dt/6)·v·(−s₀−4sₘ−s₁)  G(px,v)=(dt/6)·(c₀+4cₘ+c₁)
+    //     G(px,ω)=−(dt²/6)·v·(2sₘ+s₁)     ← RK4 相对欧拉新增的 O(dt²) 耦合
+    //     G(py,θ)=(dt/6)·v·(c₀+4cₘ+c₁)    G(py,v)=(dt/6)·(s₀+4sₘ+s₁)
+    //     G(py,ω)=(dt²/6)·v·(2cₘ+c₁)
+    //   Euler:
+    //     G(px,θ)=−v·sinθ·dt  G(px,v)=cosθ·dt
+    //     G(py,θ)= v·cosθ·dt  G(py,v)=sinθ·dt   (G(px,ω)=G(py,ω)=0)
+    //
+    // ω→0 极限下 Rk4 退回 Euler。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt) noexcept;
+    [[nodiscard]] Mat6 process_jacobian_G(const Vec6& mu, double dt,
+                                          Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
-    // 数值 Jacobian: 对 process_model_g 做逐列中心差分。
+    // 数值 Jacobian: 对 process_model_g(·, integrator) 做逐列中心差分。
     // ---------------------------------------------------------------------------
-    [[nodiscard]] Mat6 numeric_process_jacobian(const Vec6& mu, double dt, double eps) noexcept;
+    [[nodiscard]] Mat6 numeric_process_jacobian(const Vec6& mu, double dt, double eps,
+                                                Integrator integrator = Integrator::Rk4) noexcept;
 
     // ---------------------------------------------------------------------------
     // ProcessNoiseParams: 过程噪声 Q 的物理来源参数。
@@ -113,10 +135,14 @@ export namespace mininav
     class Ekf
     {
     public:
-        Ekf(EkfState6 initial_state, ProcessNoiseParams noise) noexcept
-            : state_{std::move(initial_state)}, noise_{noise}
+        // integrator 缺省 Rk4(生产路径); 传 Euler 仅用于归因实验。
+        Ekf(EkfState6 initial_state, ProcessNoiseParams noise,
+            Integrator integrator = Integrator::Rk4) noexcept
+            : state_{std::move(initial_state)}, noise_{noise}, integrator_{integrator}
         {
         }
+
+        [[nodiscard]] Integrator integrator() const noexcept { return integrator_; }
 
         // -----------------------------------------------------------------------
         // predict: 一步预测
@@ -143,8 +169,11 @@ export namespace mininav
         //   z      = (v̂, ω̂), 由 decode_encoder 从 EncoderTicks 解码而来
         //   R_meas = 2×2 观测噪声, 由 encoder_noise_covariance 从物理参数推导
         // EKF 在此传感器无关: 它只接受 (z, R), 不关心 z 来自 encoder 还是别处。
+        //
+        // 返回值: 本次更新的 NIS(Normalized Innovation Squared) = yᵀ·S⁻¹·y。
+        // 用于 filter consistency 诊断 —— 理论上服从自由度 2 的 χ² 分布。
         // -----------------------------------------------------------------------
-        void update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
+        double update_encoder(const Eigen::Vector2d& z, const Eigen::Matrix2d& R_meas);
 
         // -----------------------------------------------------------------------
         // update_imu: IMU观测的 Kalman update(含 bias)。
@@ -160,8 +189,10 @@ export namespace mininav
         //   K = (Σ̄·Hᵀ) / S
         //   μ = μ̄ + K·(z − ẑ)
         //   Σ = (I−K·H)·Σ̄·(I−K·H)ᵀ + K·R·Kᵀ
+        //
+        // 返回值: 本次更新的 NIS = y²/S(标量观测)。理论上服从自由度 1 的 χ² 分布。
         // -----------------------------------------------------------------------
-        void update_imu(double z, double R_imu);
+        double update_imu(double z, double R_imu);
 
         [[nodiscard]] const EkfState6& state() const noexcept { return state_; }
         [[nodiscard]] const Vec6& mu() const noexcept { return state_.mu; }
@@ -170,5 +201,6 @@ export namespace mininav
     private:
         EkfState6 state_;
         ProcessNoiseParams noise_;
+        Integrator integrator_{Integrator::Rk4};
     };
 }

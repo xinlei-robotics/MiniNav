@@ -9,7 +9,9 @@ import mininav.core.types;
 export namespace mininav
 {
     // ---------------------------------------------------------------------------
-    // differential_drive_step: 差分驱动机器人的一阶欧拉积分
+    // differential_drive_step: 差分驱动机器人的 RK4 积分入口。
+    //
+    // Kept as the stable public kinematics API; internally delegates to rk4_step.
     // ---------------------------------------------------------------------------
     [[nodiscard]] Pose2D differential_drive_step(const Pose2D& current, const Twist2D& control, double dt) noexcept;
 

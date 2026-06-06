@@ -131,5 +131,10 @@ export namespace mininav
         // --- EKF 估计快照 ---
         Eigen::Vector<double, 6> ekf_mean{Eigen::Vector<double, 6>::Zero()};
         Eigen::Matrix<double, 6, 6> ekf_cov{Eigen::Matrix<double, 6, 6>::Identity()};
+
+        // --- NIS (Normalized Innovation Squared) consistency 诊断 ---
+        // 本步 encoder / IMU 更新的 NIS;理论上分别服从自由度 2 / 1 的 χ² 分布。
+        double nis_encoder{0.0};
+        double nis_imu{0.0};
     };
 }

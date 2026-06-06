@@ -14,7 +14,7 @@ plot_trajectory.py
 用法:
     python scripts/plot_trajectory.py \
         --input data/traj.csv \
-        --output results/traj_v0.png
+        --output results/v0/traj.png
 
 依赖:numpy, pandas, matplotlib
 """
@@ -156,8 +156,8 @@ def _parse_args() -> argparse.Namespace:
         help="Path to trajectory CSV (default: data/traj.csv)",
     )
     parser.add_argument(
-        "--output", type=Path, default=Path("results/traj_v0.png"),
-        help="Output PNG path (default: results/traj_v0.png)",
+        "--output", type=Path, default=Path("results/v0/traj.png"),
+        help="Output PNG path (default: results/v0/traj.png)",
     )
     return parser.parse_args()
 

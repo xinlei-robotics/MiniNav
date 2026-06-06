@@ -85,8 +85,7 @@ TEST(DifferentialDriveStep, ZeroCommandKeepsPose)
 
 TEST(DifferentialDriveStep, MultiStepConsistency)
 {
-    // 100 步 dt=0.01 的直线运动应等价于 1 步 dt=1.0(因为是欧拉积分,
-    // 直线场景下没有非线性误差)
+    // 100 步 dt=0.01 的直线运动应等价于 1 步 dt=1.0。
     mininav::Pose2D pose{0.0, 0.0, 0.0};
     const mininav::Twist2D cmd{1.0, 0.0};
     for (int i = 0; i < 100; ++i)
@@ -95,6 +94,22 @@ TEST(DifferentialDriveStep, MultiStepConsistency)
     }
     EXPECT_NEAR(pose.x(), 1.0, kEps);
     EXPECT_NEAR(pose.y(), 0.0, kEps);
+}
+
+TEST(DifferentialDriveStep, CircularMotionReturnsNearStartWithRk4Accuracy)
+{
+    // v=0.2 m/s, omega=pi rad/s => one full revolution in 2 seconds.
+    mininav::Pose2D pose{0.0, 0.0, 0.0};
+    const mininav::Twist2D cmd{0.2, mininav::kPi};
+
+    for (int i = 0; i < 100; ++i)
+    {
+        pose = mininav::differential_drive_step(pose, cmd, 0.02);
+    }
+
+    EXPECT_NEAR(pose.x(), 0.0, 1e-6);
+    EXPECT_NEAR(pose.y(), 0.0, 1e-6);
+    EXPECT_NEAR(pose.yaw(), 0.0, 1e-9);
 }
 
 TEST(KinematicsRoundTrip, InverseThenForwardIsIdentity) {

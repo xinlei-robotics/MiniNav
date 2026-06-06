@@ -27,8 +27,14 @@ namespace
     }
 }
 
-TEST(EkfJacobian, MatchesFiniteDifference)
+// 两条积分器路径(Rk4 / Euler)的解析 Jacobian 都必须与各自过程模型的中心差分一致。
+class EkfJacobianFiniteDiff : public ::testing::TestWithParam<Integrator>
 {
+};
+
+TEST_P(EkfJacobianFiniteDiff, MatchesFiniteDifference)
+{
+    const Integrator integ = GetParam();
     std::mt19937 rng{42};
     constexpr double dt = 0.01;
     constexpr double eps = 1e-6;
@@ -36,16 +42,20 @@ TEST(EkfJacobian, MatchesFiniteDifference)
     for (int trial = 0; trial < 200; ++trial)
     {
         const Vec6 x = make_random_state(rng);
-        const Mat6 G_analytic = process_jacobian_G(x, dt);
-        const Mat6 G_numeric = numeric_process_jacobian(x, dt, eps);
+        const Mat6 G_analytic = process_jacobian_G(x, dt, integ);
+        const Mat6 G_numeric = numeric_process_jacobian(x, dt, eps, integ);
 
         EXPECT_TRUE(G_analytic.isApprox(G_numeric, 1e-6))
+            << "integrator = " << (integ == Integrator::Rk4 ? "Rk4" : "Euler") << '\n'
             << "trial " << trial << '\n'
             << "state = " << x.transpose() << '\n'
             << "analytic:\n" << G_analytic << '\n'
             << "numeric:\n" << G_numeric << '\n';
     }
 }
+
+INSTANTIATE_TEST_SUITE_P(BothIntegrators, EkfJacobianFiniteDiff,
+                         ::testing::Values(Integrator::Rk4, Integrator::Euler));
 
 TEST(EkfJacobian, ZeroVelocityDecouplesHeadingFromPosition)
 {
