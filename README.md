@@ -42,14 +42,95 @@ It answers the three core questions of mobile robot navigation:
 The project is organized as a multi-stage roadmap (V0 → V6), each
 version solving one well-scoped problem and building on the previous one.
 
-> **Current status: V1 complete.** V2 (EKF sensor fusion) is the next
-> milestone. See [`docs/v1_summary.md`](docs/v1_summary.md) for a deep
-> dive into V1's design decisions, the noise models, and the odometry
-> drift problem.
+> **Current status: V2 complete.** A 6-state EKF now fuses wheel encoders
+> and a gyro to fight the V1 odometry drift, with online gyro-bias
+> estimation, RK4 process integration, and NIS consistency diagnostics.
+> See [`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md)
+> for the full quantitative study, and [`docs/v1_summary.md`](docs/v1_summary.md)
+> for the drift problem V2 was built to address.
 
 ---
 
-## Latest milestone — V1: Sensors, noise & odometry drift
+## Latest milestone — V2: EKF sensor fusion
+
+V2 replaces V1's open-loop wheel odometry with a probabilistic
+**Extended Kalman Filter** that fuses two independent proprioceptive
+sensors — wheel encoders and a gyro — into a single state estimate. It
+was built incrementally across four PRs: the math foundation and
+predict-only filter (#61), the encoder + IMU measurement updates (#62),
+online gyro-bias estimation (#63), and the engineering-polish layer —
+RK4 integration, `Q`/`R` tuning knobs, and NIS diagnostics (#64).
+
+<p align="center">
+  <img src="results/v2/fusion_trajectory.png" alt="V2 — odom vs EKF vs truth trajectory" width="80%"/>
+  <img src="results/v2/covariance_evolution.gif" alt="V2 — 3σ covariance ellipse growth over a run" width="60%"/>
+</p>
+
+### The filter
+
+V2 estimates a **6-dimensional state**
+
+```
+x = [ pₓ  p_y  θ  v  ω  b_ω ]ᵀ
+```
+
+with a constant-velocity process model: position integrates the body
+twist `(v, ω)`, while `(v, ω, b_ω)` are modelled as random walks. The
+position rows of the process model and its Jacobian use **RK4**
+integration; the analytic Jacobian is checked column-by-column against
+finite differences for *both* the Euler and RK4 paths.
+
+Both sensors are treated as **observations of the hidden state**, not as
+control inputs — their rates differ, and keeping the updates separate
+improves fault tolerance:
+
+| Sensor  | Observes  | Notes                                                               |
+|---------|-----------|---------------------------------------------------------------------|
+| Encoder | `(v, ω)`  | Independently constrains the body twist                             |
+| Gyro    | `ω + b_ω` | The `b_ω` coupling makes bias *jointly observable* with the encoder |
+
+Covariance updates use the **Joseph form** and force symmetry every step
+for numerical stability. Process noise `Q` is derived from V1's
+velocity-motion-model `α` parameters and measurement noise `R` from V1's
+sensor-noise parameters; `--q-scale` / `--r-scale` only *scale* these
+physically-derived values for sensitivity analysis.
+
+### What the experiment actually found
+
+The full study lives in
+[`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md)
+— all numbers are 20-seed aggregates across three noise presets, not
+cherry-picked single runs.
+
+- **Fusion lowers error, but the gain is preset-dependent.** At
+  `low-noise` the full EKF cuts position RMSE by **−48.9 %** vs odom
+  (0.557 m → 0.285 m); at `default` the margin shrinks to **−8.3 %**
+  with large seed-to-seed spread. There is no honest single "−X %".
+- **Online bias estimation has an operating envelope — the headline
+  engineering lesson.** When the gyro bias dominates (`low-noise`) it is
+  indispensable, but at `high-noise` the bias state becomes too weakly
+  observable and *destabilizes* the filter — 19 of 20 seeds diverge,
+  blowing heading RMSE from 19.6° to 80.5°. A more expressive model only
+  helps when the new state can actually be pinned down.
+- **The filter is mildly overconfident** (encoder NIS ≈ 4.7 vs the
+  expected 2), because the constant-velocity model cannot track the
+  per-step actuator white noise. It stays consistent on *pose* even so,
+  and is tunable via `--q-scale`.
+- **Position is unobservable from proprioception alone.** The 3σ
+  covariance ellipse grows ~1.9×10⁵× over a 20 s run, anisotropy ≈ 9.8,
+  with the major axis tracking heading — a direct picture of why V3+
+  needs an exteroceptive (map / scan-matching) sensor.
+- **Euler→RK4 does not move this benchmark** at `dt = 0.01 s` with
+  per-step observations (+0.28 % ± 1.43 %, statistically indistinguishable
+  from zero). It is kept for *correctness*, reported honestly as a null
+  result.
+
+V2 is where MiniNav stops *measuring* drift and starts *fighting* it —
+while being honest about exactly where fusion stops helping.
+
+---
+
+## Previous milestone — V1: Sensors, noise & odometry drift
 
 V1 is the first version of MiniNav that *has something to fix*. V0
 established a clean codebase running an ideal differential-drive robot
@@ -126,7 +207,7 @@ a real estimation problem.
 |---------|--------------------------|----------------------------------------------------------------------------------------------------|--------|
 | **V0**  | Simulation scaffolding   | Differential-drive kinematics, `Trajectory<T>`, CSV/Rerun dual output, GoogleTest, strict warnings | ✅      |
 | **V1**  | Sensors, noise, odometry | Velocity Motion Model, encoder slip + quantization, `WheelOdometry`, drift experiments             | ✅      |
-| **V2**  | EKF state estimation     | IMU model, EKF predict + update, RMSE quantification vs odom baseline                              | → next |
+| **V2**  | EKF state estimation     | Gyro IMU model, 6-state EKF (predict + encoder/IMU updates), online gyro-bias estimation, RK4 process model, NIS diagnostics, 20-seed RMSE study vs odom baseline | ✅      |
 | **V3**  | Path planning            | Occupancy grid map, A\* global planner                                                             |        |
 | **V4**  | Control + ROS 2          | Pure Pursuit tracker, packaged as ROS 2 nodes                                                      |        |
 | **V5**  | Full simulation loop     | Goal-pose → plan → track → arrive demo in ROS 2                                                    |        |
@@ -179,21 +260,27 @@ Capabilities established in V0 and reused by every subsequent version.
 ├─────────────────────────────────────────────┤
 │ Layer 3: Global Planning                    │  Occupancy grid + A*       (V3)
 ├─────────────────────────────────────────────┤
-│ Layer 2: Localization & State Estimation    │  Odom + IMU + EKF          (V1 ✅, V2)
+│ Layer 2: Localization & State Estimation    │  Odom + IMU + EKF          (V1 ✅, V2 ✅)
 ├─────────────────────────────────────────────┤
 │ Layer 1: Kinematic Simulation               │  Differential-drive model  (V0 ✅)
 └─────────────────────────────────────────────┘
 ```
 
-### Module dependencies (after V1)
+### Module dependencies (after V2)
 
 ```mermaid
 graph TD
-    sim_v1[sim_v1] --> core[core]
-    sim_v1 --> sensors[sensors]
-    sim_v1 --> localization[localization]
-    sim_v1 --> viz[viz]
-    sim_v1 --> cli11[CLI11]
+    sim_v2[sim_v2] --> core[core]
+    sim_v2 --> sensors[sensors]
+    sim_v2 --> localization[localization]
+    sim_v2 --> viz[viz]
+    sim_v2 --> cli11[CLI11]
+
+    sim_v1[sim_v1] --> core
+    sim_v1 --> sensors
+    sim_v1 --> localization
+    sim_v1 --> viz
+    sim_v1 --> cli11
 
     sim_v0[sim_v0] --> core
     sim_v0 --> viz
@@ -208,17 +295,23 @@ graph TD
     style sensors fill:#1f4f1f,color:#fff
     style localization fill:#1f3f5c,color:#fff
     style viz fill:#3a1f5c,color:#fff
-    style sim_v1 fill:#5c4a1f,color:#fff
+    style sim_v2 fill:#5c4a1f,color:#fff
+    style sim_v1 fill:#3a2f1a,color:#fff
     style sim_v0 fill:#3a2f1a,color:#fff
 ```
 
-`sensors` and `localization` are **independent of each other** — they
-only communicate through the `EncoderTicks` plain struct, passed through
-the `sim_v1` main loop. This dependency inversion is what makes V6 work
-without modifying the estimator: real GPIO ticks plug into the same
-struct the simulated encoder produces.
+`sensors` and `localization` remain **independent of each other** — they
+communicate only through plain structs (`EncoderTicks` plus a scalar gyro
+reading), passed through the `sim_v2` main loop. The V2 `Ekf` lives in
+the *same* `localization` library as V1's `WheelOdometry` and consumes
+the *same* `EncoderTicks`; `sim_v2` runs both side by side so the EKF can
+be scored against the odometry baseline on identical sensor streams. This
+dependency inversion is what makes V6 work without modifying the
+estimator: real GPIO ticks plug into the same struct the simulated
+encoder produces.
 
-`sim_v0` is preserved as a regression baseline; V1 does not replace it.
+`sim_v0` and `sim_v1` are preserved as regression baselines; newer
+versions add code rather than replacing it.
 
 ---
 
@@ -284,6 +377,65 @@ python scripts/v1/analyze_drift.py
 Produces `results/v1/trajectory.png` and `results/v1/drift_over_time.png`,
 and prints final / peak position error and final yaw error to stdout.
 
+### Run the V2 simulation (EKF sensor fusion)
+
+```bash
+# Default: random seed, default preset, RK4 integrator, online bias estimation
+./build/clang18-debug/sim_v2
+
+# Fully reproducible run (the seed prints to stdout when omitted)
+./build/clang18-debug/sim_v2 --seed 42 --preset default
+
+# Disable online gyro-bias estimation (the 'ekf (no bias)' baseline).
+# Write to its own file so it doesn't clobber the with-bias run above.
+./build/clang18-debug/sim_v2 --seed 42 --preset default --no-bias --out data/traj_v2_nobias.csv
+
+# Sensitivity knobs: scale the EKF's physics-derived Q / R (1.0 = physical
+# value). These tune the *filter* only — the simulated truth/measurements
+# are untouched.
+./build/clang18-debug/sim_v2 --q-scale 2.0      # trust the motion model less
+./build/clang18-debug/sim_v2 --r-scale 0.5      # trust the sensors more
+
+# RK4-vs-Euler attribution: same seed/preset, integrator the only difference
+./build/clang18-debug/sim_v2 --integrator euler --out data/traj_v2_euler.csv
+./build/clang18-debug/sim_v2 --integrator rk4   --out data/traj_v2_rk4.csv
+
+# Headless / CI mode — only writes data/traj_v2.csv
+./build/clang18-debug/sim_v2 --no-viz
+```
+
+### Generate the V2 EKF figures
+
+```bash
+source .venv/bin/activate
+
+# Per-run diagnostics from the two runs above: three-trajectory overlay,
+# cumulative RMSE, NIS consistency, 3σ state-error envelopes, bias learning.
+# The script is mode-aware (reads the CSV's `# mode` header).
+python scripts/v2/analyze_ekf.py --input data/traj_v2.csv --ekf-no-bias data/traj_v2_nobias.csv
+#   -> fusion_trajectory.png, fusion_rmse_over_time.png, nis_consistency.png,
+#      state_errors.png, bias_learning.png
+
+# 3σ position-covariance ellipse evolution (static + geometry + animated GIF)
+python scripts/v2/analyze_covariance.py --input data/traj_v2.csv
+#   -> covariance_ellipses.png, covariance_geometry.png, covariance_evolution.gif
+
+# RK4-vs-Euler attribution, single seed pair (consumes the two --out files above)
+python scripts/v2/analyze_integrator.py --euler data/traj_v2_euler.csv --rk4 data/traj_v2_rk4.csv
+#   -> integrator_rmse.png
+
+# RK4-vs-Euler attribution, multi-seed average — drives sim_v2 itself per seed
+python scripts/v2/sweep_integrator.py --n-seeds 30 --preset default
+#   -> integrator_sweep.png
+```
+
+All figures land in `results/v2/` (override with `--output`). Every
+`traj_v2.csv` embeds `seed` / `preset` / `integrator` / `q_scale` /
+`r_scale` / `bias` in its header comments, so any run replays exactly —
+and `analyze_integrator.py` / `sweep_integrator.py` rely on the fact that
+the EKF consumes no RNG, so an Euler and an RK4 run at the same seed share
+a bit-identical truth and measurement stream.
+
 ### V0 simulation (preserved as regression baseline)
 
 ```bash
@@ -313,15 +465,37 @@ Additional scalar time series are logged for diagnostics:
 `dticks_l` / `dticks_r`, and direct `error/position` + `error/yaw`
 channels.
 
+`sim_v2` reuses that V1 surface (command / truth / odom) and adds the EKF
+on top:
+
+| Entity path               | Meaning                                                       |
+|---------------------------|---------------------------------------------------------------|
+| `/world/robot/ekf`        | EKF fused pose estimate (with its trail at `/world/trails/ekf`) |
+| `/plots/bias_omega/ekf`   | Online gyro-bias *estimate* `b_ω` over time                   |
+| `/plots/bias_omega/truth` | The simulator's *true* gyro bias, for direct comparison       |
+
+The `bias_omega` pair is the most legible demonstration in V2: in the
+Rerun time-series view you watch `b_ω` start at 0 and converge toward the
+true bias within a few seconds — the payoff of the state augmentation,
+and (at `high-noise`) the place where you can watch it fail to settle.
+
 ---
 
 ## Documentation
 
 Per-version retrospectives and design notes live under `docs/`:
 
-- [`docs/project-overview.md`](docs/project-overview.md) — full vision, V0 → V6 roadmap, technology choices
+- [`docs/project-overview.md`](docs/project_overview.md) — full vision, V0 → V6 roadmap, technology choices
 - [`docs/v0_summary.md`](docs/v0_summary.md) — V0 retrospective: scaffolding design, alternatives, lessons learned
 - [`docs/v1_summary.md`](docs/v1_summary.md) — V1 retrospective: noise modelling, encoder physics, RNG design, drift analysis
+- [`docs/v2_summary.md`](docs/v2_summary.md) — V2 retrospective: 6-state EKF design, sensors-as-observations, the bias-estimation operating envelope, RK4 process model, NIS diagnostics
+- [`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md) — V2 experiment report: 20-seed EKF-vs-odom RMSE study, the bias-estimation operating envelope, NIS consistency, covariance/observability analysis
+
+Mathematical derivations live under `docs/math/`:
+
+- [`docs/math/EKF_Foundations.md`](docs/math/EKF_Foundations.md) — EKF predict/update, Jacobians, Joseph-form covariance
+- [`docs/math/runge_kutta_integration.md`](docs/math/runge_kutta_integration.md) — RK4 process integration and its analytic Jacobian
+- [`docs/math/odom_noise.md`](docs/math/odom_noise.md) — velocity-motion-model noise, the basis for `Q` and `R`
 
 ---
 
