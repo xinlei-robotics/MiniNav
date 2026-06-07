@@ -122,7 +122,7 @@ answers "what does done look like for this version?"
 | V6 — Real Robot Deployment           | open           | Sim-to-real gap table; Hausdorff distance quantified                    |
 | V7 — SLAM Integration                | open (stretch) | Indoor mapping + navigation video                                       |
 
-See [`docs/project-overview.md`](project-overview.md) for the full
+See [`docs/project-overview.md`](project_overview.md) for the full
 version roadmap and rationale.
 
 ---
