@@ -13,13 +13,8 @@ namespace mininav
                                    const EncoderNoiseParams& params,
                                    const double dt) noexcept
     {
-        const double dist_l = static_cast<double>(dticks.left) * params.distance_per_tick;
-        const double dist_r = static_cast<double>(dticks.right) * params.distance_per_tick;
-
-        const double v_l = dist_l / dt;
-        const double v_r = dist_r / dt;
-
-        const Twist2D twist = forward_kinematics(v_l, v_r, params.wheel_base);
+        const Twist2D twist =
+            twist_from_ticks(dticks, params.distance_per_tick, params.wheel_base, dt);
         return Eigen::Vector2d{twist.v(), twist.w()};
     }
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Consolidated the simulation into a single `sim` binary (`src/apps/sim_main.cpp`)
+  and a single `SimState` record type. `main` now reflects only the current design
+  rather than carrying every past version side by side.
+- Adopted a **tag-based versioning policy**: completed milestones are preserved as
+  git tags + GitHub releases (`v0.1.0`–`v0.3.0`) plus `docs/` retrospectives, instead
+  of as coexisting `sim_vN` binaries in the trunk. Regression protection now comes
+  from tests and committed golden CSVs, not from keeping old binaries alive.
+- Refactored `sim_main.cpp` into layered `NoisePreset` / `CliOptions` / `SimConfig` /
+  `Simulator` components; the simulation output is byte-for-byte unchanged.
+- Renamed version-tagged code identifiers now that a single simulation remains:
+  `sim_v2` → `sim`, `SimStateV2` → `SimState`, `register_v2_statics` → `register_statics`,
+  default output `data/traj_v2.csv` → `data/traj.csv`, Rerun application id
+  `mininav_v2` → `mininav`. Analysis scripts updated to match.
+
+### Removed
+
+- `sim_v0` and `sim_v1` executables, the `SimStateV0` / `SimStateV1` state structs and
+  their CSV/Rerun overloads, and the speculative `RobotModel` polymorphic wrapper.
+  All remain reproducible from tags `v0.1.0` / `v0.2.0`.
+
 ## [0.3.0] - 2026-06-06
 
 V2 — EKF Sensor Fusion.

@@ -14,14 +14,8 @@ namespace mininav
 
     Pose2D WheelOdometry::update(const EncoderTicks& dticks, double dt)
     {
-        
-        const double dist_l = static_cast<double>(dticks.left) * params_.distance_per_tick;
-        const double dist_r = static_cast<double>(dticks.right) * params_.distance_per_tick;
-
-        const double v_l = dist_l / dt;
-        const double v_r = dist_r / dt;
-
-        const Twist2D twist = forward_kinematics(v_l, v_r, params_.wheel_base);
+        const Twist2D twist =
+            twist_from_ticks(dticks, params_.distance_per_tick, params_.wheel_base, dt);
         odom_pose_ = differential_drive_step(odom_pose_, twist, dt);
 
         return odom_pose_;

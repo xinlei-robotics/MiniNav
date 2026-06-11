@@ -9,7 +9,7 @@ import mininav.core.types;
 export namespace mininav
 {
     // ===========================================================================
-    // Encoder observation model for the V2 EKF.
+    // Encoder observation model for the EKF.
     //
     // 该模块是将原始 EncoderTicks 解码成对隐状态 (v, ω) 的观测 z = (v̂, ω̂),
     // 并从 wheel encoder 的噪声参数推导出观测噪声协方差 R。

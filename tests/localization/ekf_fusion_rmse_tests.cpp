@@ -29,7 +29,7 @@ import mininav.localization.ekf;
 import mininav.localization.ekf_state;
 import mininav.localization.encoder_observation;
 
-using namespace mininav;
+using namespace mininav; using namespace mininav::ekf;
 
 namespace
 {

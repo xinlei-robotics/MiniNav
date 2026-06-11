@@ -150,12 +150,12 @@ graph LR
     cmd[StagedCommandSource] -->|cmd| actuator[ActuatorModel]
     actuator -->|true_velocity| truth["differential_drive_step<br/>truth channel"]
     actuator -->|true_velocity| encoder[WheelEncoderModel]
-    truth -->|truth_pose| state[SimStateV1]
+    truth -->|truth_pose| state[SimState]
     encoder -->|EncoderTicks| odometry[WheelOdometry]
     odometry -->|odom_pose| state
-    state -->|append| traj["Trajectory&lt;SimStateV1&gt;"]
+    state -->|append| traj["Trajectory&lt;SimState&gt;"]
     state -.->|log_to_rerun| rerun[Rerun]
-    traj -->|write_csv_with_metadata| csv[traj_v1.csv]
+    traj -->|write_csv_with_metadata| csv[traj.csv]
 
     style state fill:#0a4f3f,color:#fff
     style truth fill:#1f4f1f,color:#fff
@@ -192,7 +192,7 @@ filter needs.
 - **Three preset noise levels** (`low-noise` / `default` / `high-noise`)
   swappable via `--preset`. The `default` preset is tuned so drift is
   clearly visible in 20 s without being unrealistic.
-- **Self-documenting CSV output**. Every `traj_v1.csv` carries header
+- **Self-documenting CSV output**. Every `traj.csv` carries header
   comments embedding `seed`, `preset`, `dt`, `duration`, and
   `generated_at` — any saved trajectory can be exactly re-run.
 
@@ -224,14 +224,13 @@ Capabilities established in V0 and reused by every subsequent version.
   like Eigen stay in implementation files or global module fragments,
   keeping the module scan cost manageable.
 - **ADL-based extension points**. `csv_row(T)` and `log_to_rerun(T, ...)`
-  are free functions resolved by Argument-Dependent Lookup. Adding a
-  new `SimStateV2` only requires writing new overloads in new files —
-  V0 and V1 code is never touched. This is the Open/Closed Principle
-  expressed in C++ at its most natural.
-- **Versioned state structs**. `SimStateV0`, `SimStateV1`, … evolve by
-  addition rather than inheritance. State is plain data; the `Trajectory`
-  container is a class template so each version reuses the same
-  container code.
+  are free functions resolved by Argument-Dependent Lookup. Supporting a
+  new state type means adding overloads rather than touching the
+  `Trajectory` container or the Rerun sink — the serialization and viz
+  layers stay open for extension.
+- **Plain-data state struct**. `SimState` is plain data (no inheritance);
+  the `Trajectory` container is a class template parameterized over it, so
+  the same container code serves any record type.
 - **PIMPL-isolated visualization**. The `viz` static library hides the
   Rerun SDK behind `unique_ptr<Impl>`. Downstream targets do not
   transitively `#include <rerun.hpp>` — neither symbols nor compile time
@@ -270,20 +269,11 @@ Capabilities established in V0 and reused by every subsequent version.
 
 ```mermaid
 graph TD
-    sim_v2[sim_v2] --> core[core]
-    sim_v2 --> sensors[sensors]
-    sim_v2 --> localization[localization]
-    sim_v2 --> viz[viz]
-    sim_v2 --> cli11[CLI11]
-
-    sim_v1[sim_v1] --> core
-    sim_v1 --> sensors
-    sim_v1 --> localization
-    sim_v1 --> viz
-    sim_v1 --> cli11
-
-    sim_v0[sim_v0] --> core
-    sim_v0 --> viz
+    sim[sim] --> core[core]
+    sim --> sensors[sensors]
+    sim --> localization[localization]
+    sim --> viz[viz]
+    sim --> cli11[CLI11]
 
     sensors --> core
     localization --> core
@@ -295,23 +285,24 @@ graph TD
     style sensors fill:#1f4f1f,color:#fff
     style localization fill:#1f3f5c,color:#fff
     style viz fill:#3a1f5c,color:#fff
-    style sim_v2 fill:#5c4a1f,color:#fff
-    style sim_v1 fill:#3a2f1a,color:#fff
-    style sim_v0 fill:#3a2f1a,color:#fff
+    style sim fill:#5c4a1f,color:#fff
 ```
 
 `sensors` and `localization` remain **independent of each other** — they
 communicate only through plain structs (`EncoderTicks` plus a scalar gyro
-reading), passed through the `sim_v2` main loop. The V2 `Ekf` lives in
-the *same* `localization` library as V1's `WheelOdometry` and consumes
-the *same* `EncoderTicks`; `sim_v2` runs both side by side so the EKF can
-be scored against the odometry baseline on identical sensor streams. This
+reading), passed through the `sim` main loop. The `Ekf` lives in the *same*
+`localization` library as the `WheelOdometry` baseline and consumes the
+*same* `EncoderTicks`; `sim` runs both side by side so the EKF can be
+scored against the odometry baseline on identical sensor streams. This
 dependency inversion is what makes V6 work without modifying the
 estimator: real GPIO ticks plug into the same struct the simulated
 encoder produces.
 
-`sim_v0` and `sim_v1` are preserved as regression baselines; newer
-versions add code rather than replacing it.
+**Versioning policy.** `main` reflects the current best design; superseded
+code is refactored away rather than kept alongside. Each completed
+milestone is preserved as a git tag and GitHub release (`v0.1.0`=V0,
+`v0.2.0`=V1, `v0.3.0`=V2) plus a retrospective in `docs/`, so every prior
+version stays reachable through history without weighing down the trunk.
 
 ---
 
@@ -346,62 +337,31 @@ cmake --build --preset build-debug -j
 ctest --preset test-debug --output-on-failure
 ```
 
-### Run the V1 simulation
-
-```bash
-# Default: random seed, default preset, spawns Rerun Viewer via gRPC
-./build/clang18-debug/sim_v1
-
-# Fully reproducible run (the seed prints to stdout when omitted)
-./build/clang18-debug/sim_v1 --seed 42 --preset default
-
-# Cycle through the three noise levels
-./build/clang18-debug/sim_v1 --preset low-noise
-./build/clang18-debug/sim_v1 --preset default
-./build/clang18-debug/sim_v1 --preset high-noise
-
-# Save a .rrd recording, replay later with `rerun results/v1.rrd`
-./build/clang18-debug/sim_v1 --rrd results/v1.rrd
-
-# Headless / CI mode — only writes data/traj_v1.csv
-./build/clang18-debug/sim_v1 --no-viz
-```
-
-### Generate drift figures
-
-```bash
-source .venv/bin/activate
-python scripts/v1/analyze_drift.py
-```
-
-Produces `results/v1/trajectory.png` and `results/v1/drift_over_time.png`,
-and prints final / peak position error and final yaw error to stdout.
-
-### Run the V2 simulation (EKF sensor fusion)
+### Run the simulation
 
 ```bash
 # Default: random seed, default preset, RK4 integrator, online bias estimation
-./build/clang18-debug/sim_v2
+./build/clang18-debug/sim
 
 # Fully reproducible run (the seed prints to stdout when omitted)
-./build/clang18-debug/sim_v2 --seed 42 --preset default
+./build/clang18-debug/sim --seed 42 --preset default
 
 # Disable online gyro-bias estimation (the 'ekf (no bias)' baseline).
 # Write to its own file so it doesn't clobber the with-bias run above.
-./build/clang18-debug/sim_v2 --seed 42 --preset default --no-bias --out data/traj_v2_nobias.csv
+./build/clang18-debug/sim --seed 42 --preset default --no-bias --out data/traj_nobias.csv
 
 # Sensitivity knobs: scale the EKF's physics-derived Q / R (1.0 = physical
 # value). These tune the *filter* only — the simulated truth/measurements
 # are untouched.
-./build/clang18-debug/sim_v2 --q-scale 2.0      # trust the motion model less
-./build/clang18-debug/sim_v2 --r-scale 0.5      # trust the sensors more
+./build/clang18-debug/sim --q-scale 2.0      # trust the motion model less
+./build/clang18-debug/sim --r-scale 0.5      # trust the sensors more
 
 # RK4-vs-Euler attribution: same seed/preset, integrator the only difference
-./build/clang18-debug/sim_v2 --integrator euler --out data/traj_v2_euler.csv
-./build/clang18-debug/sim_v2 --integrator rk4   --out data/traj_v2_rk4.csv
+./build/clang18-debug/sim --integrator euler --out data/traj_euler.csv
+./build/clang18-debug/sim --integrator rk4   --out data/traj_rk4.csv
 
-# Headless / CI mode — only writes data/traj_v2.csv
-./build/clang18-debug/sim_v2 --no-viz
+# Headless / CI mode — only writes data/traj.csv
+./build/clang18-debug/sim --no-viz
 ```
 
 ### Generate the V2 EKF figures
@@ -412,35 +372,36 @@ source .venv/bin/activate
 # Per-run diagnostics from the two runs above: three-trajectory overlay,
 # cumulative RMSE, NIS consistency, 3σ state-error envelopes, bias learning.
 # The script is mode-aware (reads the CSV's `# mode` header).
-python scripts/v2/analyze_ekf.py --input data/traj_v2.csv --ekf-no-bias data/traj_v2_nobias.csv
+python scripts/v2/analyze_ekf.py --input data/traj.csv --ekf-no-bias data/traj_nobias.csv
 #   -> fusion_trajectory.png, fusion_rmse_over_time.png, nis_consistency.png,
 #      state_errors.png, bias_learning.png
 
 # 3σ position-covariance ellipse evolution (static + geometry + animated GIF)
-python scripts/v2/analyze_covariance.py --input data/traj_v2.csv
+python scripts/v2/analyze_covariance.py --input data/traj.csv
 #   -> covariance_ellipses.png, covariance_geometry.png, covariance_evolution.gif
 
 # RK4-vs-Euler attribution, single seed pair (consumes the two --out files above)
-python scripts/v2/analyze_integrator.py --euler data/traj_v2_euler.csv --rk4 data/traj_v2_rk4.csv
+python scripts/v2/analyze_integrator.py --euler data/traj_euler.csv --rk4 data/traj_rk4.csv
 #   -> integrator_rmse.png
 
-# RK4-vs-Euler attribution, multi-seed average — drives sim_v2 itself per seed
+# RK4-vs-Euler attribution, multi-seed average — drives sim itself per seed
 python scripts/v2/sweep_integrator.py --n-seeds 30 --preset default
 #   -> integrator_sweep.png
 ```
 
 All figures land in `results/v2/` (override with `--output`). Every
-`traj_v2.csv` embeds `seed` / `preset` / `integrator` / `q_scale` /
+`traj.csv` embeds `seed` / `preset` / `integrator` / `q_scale` /
 `r_scale` / `bias` in its header comments, so any run replays exactly —
 and `analyze_integrator.py` / `sweep_integrator.py` rely on the fact that
 the EKF consumes no RNG, so an Euler and an RK4 run at the same seed share
 a bit-identical truth and measurement stream.
 
-### V0 simulation (preserved as regression baseline)
+### Reproducing earlier milestones (V0, V1)
 
-```bash
-./build/clang18-debug/sim_v0 --no-viz   # writes data/traj.csv
-```
+V0 (kinematics scaffold) and V1 (noise + wheel-odometry drift) live at git
+tags `v0.1.0` and `v0.2.0` — check one out to build and run its simulation,
+or read the retrospectives in `docs/`. The trunk carries only the current
+EKF simulation.
 
 ---
 
@@ -452,11 +413,11 @@ during a `default`-preset run; locally, you can scrub, pause, change
 the camera, toggle individual entities on/off, and inspect the
 underlying time series.
 
-Entity paths logged by `sim_v1`:
+Entity paths logged by `sim`:
 
 | Entity path                   | Meaning                                               |
 |-------------------------------|-------------------------------------------------------|
-| `/world/robot/cmd_traj/trail` | Where a perfect executor would go (≡ V0 trajectory)   |
+| `/world/robot/cmd_traj/trail` | Where a perfect executor would go (noise-free reference) |
 | `/world/robot/truth/trail`    | Actual ground truth (after actuator noise)            |
 | `/world/robot/odom/trail`     | Wheel-odometry estimate (after the full sensor chain) |
 
@@ -465,8 +426,8 @@ Additional scalar time series are logged for diagnostics:
 `dticks_l` / `dticks_r`, and direct `error/position` + `error/yaw`
 channels.
 
-`sim_v2` reuses that V1 surface (command / truth / odom) and adds the EKF
-on top:
+On top of the command / truth / odom surface above, `sim` adds the EKF
+channels:
 
 | Entity path               | Meaning                                                       |
 |---------------------------|---------------------------------------------------------------|
@@ -474,7 +435,7 @@ on top:
 | `/plots/bias_omega/ekf`   | Online gyro-bias *estimate* `b_ω` over time                   |
 | `/plots/bias_omega/truth` | The simulator's *true* gyro bias, for direct comparison       |
 
-The `bias_omega` pair is the most legible demonstration in V2: in the
+The `bias_omega` pair is the most legible demonstration in the sim: in the
 Rerun time-series view you watch `b_ω` start at 0 and converge toward the
 true bias within a few seconds — the payoff of the state augmentation,
 and (at `high-noise`) the place where you can watch it fail to settle.

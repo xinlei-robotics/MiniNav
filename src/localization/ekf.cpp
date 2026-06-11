@@ -14,7 +14,7 @@ import mininav.core.math;
 import mininav.core.integrators;
 import mininav.core.types;
 
-namespace mininav
+namespace mininav::ekf
 {
     Vec6 process_model_g(const Vec6& mu, const double dt, const Integrator integrator) noexcept
     {
@@ -222,7 +222,7 @@ namespace mininav
         if (noise_.q_bias_omega <= 0.0)
         {
             // q_bias_omega == 0 是兼容模式: 不在线估计 gyro bias, IMU 退化为
-            // V1/V2 原始观测 z = omega + noise。这样默认构造的 EKF 不会让一个
+            // 原始观测 z = omega + noise。这样默认构造的 EKF 不会让一个
             // 未启用的 bias 状态吸收 gyro 白噪声。
             const double y = z - state_.mu(kOmega);
             const double S = state_.Sigma(kOmega, kOmega) + R_imu;

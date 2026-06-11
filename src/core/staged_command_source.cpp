@@ -13,7 +13,7 @@ namespace mininav
         }
         if (t < 5.0)
         {
-            return Twist2D{2.0,  0.0 * kPi};
+            return Twist2D{2.0,  0.0};
         }
         if (t < 10.0)
         {
@@ -21,7 +21,7 @@ namespace mininav
         }
         if (t < 15.0)
         {
-            return Twist2D{2.0, 0.0 * kPi};
+            return Twist2D{2.0, 0.0};
         }
         return Twist2D{4.0, 0.2 * kPi};
     }

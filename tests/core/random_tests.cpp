@@ -46,6 +46,6 @@ TEST(RngFactory, AddingNewTagDoesNotPerturbExistingTags) {
 
 TEST(Fnv1a, KnownVectors) {
     // FNV-1a 64-bit known test vectors (from the FNV reference).
-    EXPECT_EQ(mininav::fnv1a_64(""), 0xcbf29ce484222325ULL);
-    EXPECT_EQ(mininav::fnv1a_64("a"), 0xaf63dc4c8601ec8cULL);
+    EXPECT_EQ(mininav::detail::fnv1a_64(""), 0xcbf29ce484222325ULL);
+    EXPECT_EQ(mininav::detail::fnv1a_64("a"), 0xaf63dc4c8601ec8cULL);
 }

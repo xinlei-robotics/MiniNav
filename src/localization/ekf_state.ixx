@@ -4,7 +4,7 @@ module;
 
 export module mininav.localization.ekf_state;
 
-export namespace mininav
+export namespace mininav::ekf
 {
     using Vec6 = Eigen::Vector<double, 6>;
     using Mat6 = Eigen::Matrix<double, 6, 6>;

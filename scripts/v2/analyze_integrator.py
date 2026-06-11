@@ -3,14 +3,14 @@
 RK4 vs Euler 归因实验。
 
 比较 EKF 内部过程模型用 RK4 与用一阶欧拉时, 估计精度的差异。两个输入 CSV 必须
-由同一 seed、同一 preset、仅 --integrator 不同的两次 sim_v2 运行产生:
+由同一 seed、同一 preset、仅 --integrator 不同的两次 sim 运行产生:
 
-    ./build/clang18-debug/sim_v2 --no-viz --seed 42 --preset default \\
-        --integrator euler --out data/traj_v2_euler.csv
-    ./build/clang18-debug/sim_v2 --no-viz --seed 42 --preset default \\
-        --integrator rk4   --out data/traj_v2_rk4.csv
+    ./build/clang18-debug/sim --no-viz --seed 42 --preset default \\
+        --integrator euler --out data/traj_euler.csv
+    ./build/clang18-debug/sim --no-viz --seed 42 --preset default \\
+        --integrator rk4   --out data/traj_rk4.csv
     python scripts/v2/analyze_integrator.py \\
-        --euler data/traj_v2_euler.csv --rk4 data/traj_v2_rk4.csv --output results/v2/
+        --euler data/traj_euler.csv --rk4 data/traj_rk4.csv --output results/v2/
 
 因为 EKF 不消耗 RNG, 两次运行的 truth / encoder / IMU 流逐位相同, 估计差异只来自积分器。
 
@@ -118,8 +118,8 @@ def plot_rmse(euler: pd.DataFrame, rk4: pd.DataFrame, meta: dict[str, str],
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--euler", default="data/traj_v2_euler.csv", type=Path)
-    parser.add_argument("--rk4", default="data/traj_v2_rk4.csv", type=Path)
+    parser.add_argument("--euler", default="data/traj_euler.csv", type=Path)
+    parser.add_argument("--rk4", default="data/traj_rk4.csv", type=Path)
     parser.add_argument("--output", default="results/v2/", type=Path)
     args = parser.parse_args()
 

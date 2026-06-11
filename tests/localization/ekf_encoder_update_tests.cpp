@@ -30,7 +30,7 @@ import mininav.core.types;
 import mininav.core.kinematics;
 import mininav.core.math;
 
-using namespace mininav;
+using namespace mininav; using namespace mininav::ekf;
 
 namespace
 {

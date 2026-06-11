@@ -16,7 +16,7 @@ export namespace mininav
     //
     // 设计约定:
     //   - 所有写入操作(构造、set_*)不主动 wrap yaw,由调用方负责;
-    //     这样可以避免在高频路径里反复 wrap,也让 RobotModel 这类组件
+    //     这样可以避免在高频路径里反复 wrap,也让运动学积分器这类组件
     //     拥有对 wrap 时机的明确控制权。
     //   - 和 EKF 状态向量的约定: [x, y, yaw]^T
     // ---------------------------------------------------------------------------
@@ -86,39 +86,23 @@ export namespace mininav
         double w_{0.0};
     };
 
-    struct SimStateV0
-    {
-        double t{0.0};
-        Pose2D pose{};
-        Twist2D cmd{};
-    };
-
     struct EncoderTicks
     {
         std::int64_t left{0};
         std::int64_t right{0};
     };
 
-    struct SimStateV1
-    {
-        double t{0.0};
-        Twist2D cmd;
-        Twist2D true_velocity;
-        Pose2D truth_pose;
-        EncoderTicks enc_dticks;
-        Pose2D odom_pose;
-    };
-
     // ---------------------------------------------------------------------------
-    // SimStateV2: V2 仿真单步记录
+    // SimState: 仿真单步记录
     //
-    // 在 V1 全部字段(cmd / true_velocity / truth / encoder / odom)之上,新增 EKF 估计快照
+    // 字段分两层:仿真真值/传感层(cmd / true_velocity / truth / encoder / odom)
+    // 之上叠加 EKF 估计快照
     //
     // EKF 状态快照采用 Thrun 约定:
     //   ekf_mean  ↔ μ  (mean, 6D: [px, py, θ, v, ω, b_ω]^T)
     //   ekf_cov   ↔ Σ  (covariance, 6×6)
     // ---------------------------------------------------------------------------
-    struct SimStateV2
+    struct SimState
     {
         double t{0.0};
         Twist2D cmd;
