@@ -3,7 +3,7 @@
 V2 位置协方差椭圆随时间的演化分析。
 
 EKF 的位置 (x,y) 块 [[σxx, σxy],[σxy, σyy]] 是一个 2D 高斯, 可画成置信椭圆。
-本脚本从 data/traj_v2.csv 读出该块, 展示它在 20s 运行里【怎么变】—— 这是
+本脚本从 data/traj.csv 读出该块, 展示它在 20s 运行里【怎么变】—— 这是
 observability 的直观证据: 位置从未被直接观测, 椭圆只能随 dead-reckoning 单调
 膨胀, 且长轴随运动朝向旋转。
 
@@ -16,7 +16,7 @@ observability 的直观证据: 位置从未被直接观测, 椭圆只能随 dead
   - results/v2/covariance_evolution.gif  动画: 椭圆随均值移动/膨胀(--format mp4 可换)
 
 Run:
-    python scripts/v2/analyze_covariance.py --input data/traj_v2.csv --output results/v2/
+    python scripts/v2/analyze_covariance.py --input data/traj.csv --output results/v2/
     python scripts/v2/analyze_covariance.py --no-anim          # 跳过较慢的动画
     python scripts/v2/analyze_covariance.py --format mp4        # 用 ffmpeg 出 MP4
 """
@@ -173,7 +173,7 @@ def animate_ellipse(df, metadata, out_path: Path, n_std: float,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--input", default="data/traj_v2.csv", type=Path)
+    parser.add_argument("--input", default="data/traj.csv", type=Path)
     parser.add_argument("--output", default="results/v2/", type=Path)
     parser.add_argument("--n-std", type=float, default=3.0, help="椭圆置信等级(默认 3σ)。")
     parser.add_argument("--no-anim", action="store_true", help="跳过较慢的动画输出。")

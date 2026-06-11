@@ -9,18 +9,21 @@ export module mininav.core.random;
 
 export namespace mininav
 {
-    // FNV-1a 64-bit hash.
-    [[nodiscard]] constexpr std::uint64_t fnv1a_64(std::string_view s) noexcept
+    namespace detail
     {
-        constexpr std::uint64_t kOffset = 0xcbf29ce484222325ULL;
-        constexpr std::uint64_t kPrime = 0x100000001b3ULL;
-        std::uint64_t h = kOffset;
-        for (char c : s)
+        // FNV-1a 64-bit hash.
+        [[nodiscard]] constexpr std::uint64_t fnv1a_64(std::string_view s) noexcept
         {
-            h ^= static_cast<std::uint64_t>(static_cast<unsigned char>(c));
-            h *= kPrime;
+            constexpr std::uint64_t kOffset = 0xcbf29ce484222325ULL;
+            constexpr std::uint64_t kPrime = 0x100000001b3ULL;
+            std::uint64_t h = kOffset;
+            for (char c : s)
+            {
+                h ^= static_cast<std::uint64_t>(static_cast<unsigned char>(c));
+                h *= kPrime;
+            }
+            return h;
         }
-        return h;
     }
 
     class RngFactory
@@ -32,7 +35,7 @@ export namespace mininav
 
         [[nodiscard]] std::mt19937 make_engine(const std::string_view tag) const
         {
-            const std::uint64_t tag_hash{fnv1a_64(tag)};
+            const std::uint64_t tag_hash{detail::fnv1a_64(tag)};
             const std::array entropy{
                 static_cast<std::uint32_t>(master_seed_ & 0xffffffffu),
                 static_cast<std::uint32_t>((master_seed_ >> 32) & 0xffffffffu),

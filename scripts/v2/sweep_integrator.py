@@ -2,7 +2,7 @@
 """
 RK4 vs Euler 归因实验 —— 多 seed 扫描求平均 (V2 PR5a)。
 
-对每个 seed 各跑一次 sim_v2(--integrator euler / rk4, 其余相同), 计算 EKF 相对 truth
+对每个 seed 各跑一次 sim(--integrator euler / rk4, 其余相同), 计算 EKF 相对 truth
 的 position / yaw RMSE, 然后在 seed 之间求平均(+ 标准差)。单 seed 的随机性会让
 ~1% 量级的积分器增益淹没在噪声里; 多 seed 平均才能稳定地分离出"积分器本身"的贡献。
 
@@ -38,22 +38,22 @@ from analyze_integrator import load, overall_rmse, rmse_series, check_same_world
 
 
 def run_sim(binary: Path, seed: int, preset: str, integrator: str, out: Path) -> None:
-    """跑一次 sim_v2(headless), 失败则抛错。"""
+    """跑一次 sim(headless), 失败则抛错。"""
     cmd = [
         str(binary), "--no-viz", "--seed", str(seed), "--preset", preset,
         "--integrator", integrator, "--out", str(out),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
-        raise RuntimeError(f"sim_v2 failed (seed={seed}, integrator={integrator}):\n{proc.stderr}")
+        raise RuntimeError(f"sim failed (seed={seed}, integrator={integrator}):\n{proc.stderr}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--bin", type=Path,
-                        default=Path("build/clang18-debug/sim_v2"),
-                        help="sim_v2 可执行文件路径。")
+                        default=Path("build/clang18-debug/sim"),
+                        help="sim 可执行文件路径。")
     parser.add_argument("--preset", default="default",
                         choices=["low-noise", "default", "high-noise"])
     parser.add_argument("--seeds", type=int, nargs="+", default=None,
@@ -64,7 +64,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.bin.exists():
-        raise SystemExit(f"找不到 sim_v2: {args.bin} (先 cmake --build --preset build-debug)")
+        raise SystemExit(f"找不到 sim: {args.bin} (先 cmake --build --preset build-debug)")
 
     seeds = args.seeds if args.seeds is not None else list(range(args.n_seeds))
     args.output.mkdir(parents=True, exist_ok=True)

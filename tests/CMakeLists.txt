@@ -4,7 +4,6 @@
 add_executable(core_tests
         core/math_tests.cpp
         core/kinematics_tests.cpp
-        core/robot_model_tests.cpp
         core/trajectory_tests.cpp
         core/types_tests.cpp
         core/random_tests.cpp

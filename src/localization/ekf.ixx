@@ -8,7 +8,7 @@ export module mininav.localization.ekf;
 
 import mininav.localization.ekf_state;
 
-export namespace mininav
+export namespace mininav::ekf
 {
     // ===========================================================================
     // 符号约定：

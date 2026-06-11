@@ -27,46 +27,17 @@ add_subdirectory(src/sensors)
 add_subdirectory(src/localization)
 
 # ------------------------------------------------------------------
-# 目标: sim_v0
+# 目标: sim (唯一的仿真可执行档)
 # ------------------------------------------------------------------
-add_executable(sim_v0
-        src/apps/sim_v0_main.cpp
-)
+add_executable(sim src/apps/sim_main.cpp)
 
-target_link_libraries(sim_v0 PRIVATE core viz)
+target_link_libraries(sim PRIVATE core viz sensors localization CLI11::CLI11)
 
-target_compile_definitions(sim_v0 PRIVATE
+target_compile_definitions(sim PRIVATE
         PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
 )
 
-mininav_set_warnings(sim_v0)
-
-# ------------------------------------------------------------------
-# 目标: sim_v1
-# ------------------------------------------------------------------
-add_executable(sim_v1
-        src/apps/sim_v1_main.cpp)
-
-target_link_libraries(sim_v1 PRIVATE core viz sensors localization CLI11::CLI11)
-
-target_compile_definitions(sim_v1 PRIVATE
-        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
-)
-
-mininav_set_warnings(sim_v1)
-
-# ------------------------------------------------------------------
-# 目标: sim_v2
-# ------------------------------------------------------------------
-add_executable(sim_v2 src/apps/sim_v2_main.cpp)
-
-target_link_libraries(sim_v2 PRIVATE core viz sensors localization CLI11::CLI11)
-
-target_compile_definitions(sim_v2 PRIVATE
-        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
-)
-
-mininav_set_warnings(sim_v2)
+mininav_set_warnings(sim)
 
 # ------------------------------------------------------------------
 # 测试

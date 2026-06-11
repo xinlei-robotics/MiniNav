@@ -2,7 +2,7 @@
 """
 Analyze MiniNav V2 EKF behaviour (mode-aware).
 
-读 data/traj_v2.csv, 根据 CSV 头部的 `# mode` 元信息选择产图:
+读 data/traj.csv, 根据 CSV 头部的 `# mode` 元信息选择产图:
 
 mode = predict-only:
   - results/v2/predict_only_growth.png    trace(Σ) 与位置块特征值的无界增长
@@ -35,10 +35,10 @@ mode = encoder+imu:
 
 Run:
     # 单次运行(2 条 RMSE):
-    python scripts/v2/analyze_ekf.py --input data/traj_v2.csv --output results/
-    # 三方 RMSE 对比(需另跑一次 sim_v2 --no-bias, 同 seed/preset):
-    python scripts/v2/analyze_ekf.py --input data/traj_v2.csv \\
-        --ekf-no-bias data/traj_v2_nobias.csv --output results/
+    python scripts/v2/analyze_ekf.py --input data/traj.csv --output results/
+    # 三方 RMSE 对比(需另跑一次 sim --no-bias, 同 seed/preset):
+    python scripts/v2/analyze_ekf.py --input data/traj.csv \\
+        --ekf-no-bias data/traj_nobias.csv --output results/
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def wrap_to_pi(angle: np.ndarray) -> np.ndarray:
     return np.arctan2(np.sin(angle), np.cos(angle))
 
 
-# 各 preset 注入的常数gyro bias 真值, 镜像 sim_v2_main.cpp 的 V2Preset.imu_bias_init。
+# 各 preset 注入的常数gyro bias 真值, 镜像 sim_main.cpp 的 NoisePreset.imu_bias_init。
 # ⚠ 这是 Python 侧对 C++ 常量的手工镜像, 存在耦合: 改了 C++ preset 必须同步这里。
 #   更稳健的做法是让 C++ 把真值作为一列(如 imu_bias_true)写进 CSV, 分析脚本就
 #   完全不必知道 preset 表 —— 见文件末尾 main() 上方的说明。
@@ -416,7 +416,7 @@ def plot_bias_learning(df: pd.DataFrame, metadata: dict[str, str],
 
     这是 state augmentation 最直观的证据: b_ω 从无信息先验出发, 在 encoder+IMU
     双传感器把它变得【可观测】之后几秒内收敛到真值, Σ_bb 随之从 1e-2 量级塌缩。
-    镜像了 sim_v2_main 在 Rerun Time Series 里画的 /plots/bias_omega/{ekf,truth}。
+    镜像了 sim_main 在 Rerun Time Series 里画的 /plots/bias_omega/{ekf,truth}。
     """
     t = df["t"]
     bias_est = df["ekf_bias_omega"]
@@ -675,7 +675,7 @@ def print_summary(df: pd.DataFrame, metadata: dict[str, str],
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", default="data/traj_v2.csv", type=Path)
+    parser.add_argument("--input", default="data/traj.csv", type=Path)
     parser.add_argument("--output", default="results/v2/", type=Path)
     parser.add_argument(
         "--with-ellipses", action="store_true",

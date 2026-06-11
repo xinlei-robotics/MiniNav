@@ -1,7 +1,7 @@
 // ===========================================================================
 // gyro bias state augmentation —— 可学习性 + 可观测性测试。
 //
-// 本文件自包含地复刻 sim_v2_main 的三阶段 EKF 主循环(predict → update_encoder
+// 本文件自包含地复刻 sim_main 的三阶段 EKF 主循环(predict → update_encoder
 // → update_imu), 注入一个已知常数gyro bias 真值, 验证两件事:
 //
 //   1. GyroBiasIsLearnedWithinFiveSeconds
@@ -38,9 +38,9 @@ import mininav.localization.encoder_observation;
 
 namespace
 {
-    using namespace mininav;
+    using namespace mininav; using namespace mininav::ekf;
 
-    // 与 sim_v2_main 一致的物理常数与时间步。
+    // 与 sim_main 一致的物理常数与时间步。
     constexpr double kDt = 0.01;
     constexpr double kTotalTime = 20.0;
     constexpr double kWheelRadius = 0.032;

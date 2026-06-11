@@ -90,31 +90,7 @@ TEST(Twist2D, Setters) {
 }
 
 // ---------------------------------------------------------------------------
-// SimStateV0
-// ---------------------------------------------------------------------------
-
-TEST(SimStateV0, AggregateInitialization) {
-  const mininav::SimStateV0 state{
-      1.0,
-      mininav::Pose2D{2.0, 3.0, 0.5},
-      mininav::Twist2D{1.0, 0.1}};
-  EXPECT_NEAR(state.t, 1.0, kEps);
-  EXPECT_NEAR(state.pose.x(), 2.0, kEps);
-  EXPECT_NEAR(state.pose.y(), 3.0, kEps);
-  EXPECT_NEAR(state.pose.yaw(), 0.5, kEps);
-  EXPECT_NEAR(state.cmd.v(), 1.0, kEps);
-  EXPECT_NEAR(state.cmd.w(), 0.1, kEps);
-}
-
-TEST(SimStateV0, DefaultConstructionIsZero) {
-  const mininav::SimStateV0 state{};
-  EXPECT_NEAR(state.t, 0.0, kEps);
-  EXPECT_NEAR(state.pose.x(), 0.0, kEps);
-  EXPECT_NEAR(state.cmd.v(), 0.0, kEps);
-}
-
-// ---------------------------------------------------------------------------
-// SimStateV1
+// EncoderTicks
 // ---------------------------------------------------------------------------
 
 TEST(EncoderTicks, DefaultConstructed) {
@@ -129,13 +105,23 @@ TEST(EncoderTicks, AggregateInit) {
   EXPECT_EQ(t.right, -50);
 }
 
-TEST(SimStateV1, DefaultIsWellFormed) {
-  mininav::SimStateV1 s{};
+// ---------------------------------------------------------------------------
+// SimState
+// ---------------------------------------------------------------------------
+
+TEST(SimState, DefaultIsWellFormed) {
+  const mininav::SimState s{};
   EXPECT_DOUBLE_EQ(s.t, 0.0);
   EXPECT_DOUBLE_EQ(s.cmd.v(), 0.0);
   EXPECT_DOUBLE_EQ(s.cmd.w(), 0.0);
+  EXPECT_DOUBLE_EQ(s.imu_omega, 0.0);
   EXPECT_EQ(s.enc_dticks.left, 0);
   EXPECT_EQ(s.enc_dticks.right, 0);
   EXPECT_DOUBLE_EQ(s.truth_pose.yaw(), 0.0);
-  EXPECT_DOUBLE_EQ(s.odom_pose.yaw(),  0.0);
+  EXPECT_DOUBLE_EQ(s.odom_pose.yaw(), 0.0);
+  // EKF 快照默认: 均值为零向量, 协方差为单位阵。
+  EXPECT_TRUE(s.ekf_mean.isZero());
+  EXPECT_TRUE(s.ekf_cov.isApprox(Eigen::Matrix<double, 6, 6>::Identity()));
+  EXPECT_DOUBLE_EQ(s.nis_encoder, 0.0);
+  EXPECT_DOUBLE_EQ(s.nis_imu, 0.0);
 }

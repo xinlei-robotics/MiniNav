@@ -45,7 +45,7 @@ TEST(ImuModel, ZeroNoiseDoesNotConsumeRng)
     ImuModel zero_imu = make_imu(0.0);
     for (int i = 0; i < 1000; ++i)
     {
-        zero_imu.measure(0.5);
+        static_cast<void>(zero_imu.measure(0.5)); // 故意丢弃返回值: 只为推进 measure
     }
     // 此处只验证不会 crash 且行为可预期; 严格的"RNG 未被消费"由 sigma=0
     // 路径明确不调 distribution 保证, 见 imu_model.cpp。

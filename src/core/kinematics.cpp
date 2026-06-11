@@ -33,4 +33,12 @@ namespace mininav
         const double w = (v_right - v_left) / wheel_base;
         return Twist2D{v, w};
     }
+
+    Twist2D twist_from_ticks(const EncoderTicks& dticks, const double distance_per_tick,
+                             const double wheel_base, const double dt) noexcept
+    {
+        const double v_left = static_cast<double>(dticks.left) * distance_per_tick / dt;
+        const double v_right = static_cast<double>(dticks.right) * distance_per_tick / dt;
+        return forward_kinematics(v_left, v_right, wheel_base);
+    }
 }

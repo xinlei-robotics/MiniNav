@@ -16,15 +16,15 @@ export namespace mininav
     //   - 切换 episode (重置仿真) 时, 调用 reset_trails_* 清空轨迹.
     // ---------------------------------------------------------------------------
 
-    /// 注册仿真的静态可视化(世界轴 / 机器人本体轴).
-    void register_v0_statics(RerunSink& sink, std::string_view entity_root);
-    void register_v1_statics(RerunSink& sink, std::string_view entity_root);
+    /// 注册仿真的静态可视化(世界轴 + truth / odom / ekf 三路本体轴).
+    void register_statics(RerunSink& sink, std::string_view entity_root);
 
     // 重置轨迹数据 (调用 RerunSink::clear_trail), 以便新 episode 从空轨迹开始.
-    void reset_trails_v0(RerunSink& sink, std::string_view entity_root);
-    void reset_trails_v1(RerunSink& sink, std::string_view entity_root);
+    void reset_trails(RerunSink& sink, std::string_view entity_root);
 
     // 将仿真状态 log 到 Rerun (调用 RerunSink 的 log_* 方法).
-    void log_to_rerun(RerunSink& sink, const SimStateV0& state, std::string_view entity_root);
-    void log_to_rerun(RerunSink& sink, const SimStateV1& state, std::string_view entity_root);
+    // 负责所有可由 SimState 直接导出的实体: truth / odom / ekf 三路 pose+trail、
+    // cmd / true_velocity twist、encoder 读数、odom 漂移诊断。
+    // 需要状态外信息的 cmd_traj 参考轨迹与 bias 估计/真值对照曲线, 由 app 主循环单独 log。
+    void log_to_rerun(RerunSink& sink, const SimState& state, std::string_view entity_root);
 }

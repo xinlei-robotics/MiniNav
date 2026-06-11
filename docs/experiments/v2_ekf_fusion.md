@@ -256,17 +256,17 @@ GPS 或 scan matching)。
 
 ## 附录 — 复现
 
-以下命令均假设 Debug 构建(`build/clang18-debug/sim_v2`)与 Python venv
+以下命令均假设 Debug 构建(`build/clang18-debug/sim`)与 Python venv
 (`source .venv/bin/activate`)。
 
 ```bash
 # 单次运行(三轨迹 + 全部 per-run 图),default preset,seed 42:
-build/clang18-debug/sim_v2 --no-viz --seed 42 --preset default --out data/traj_v2.csv
-build/clang18-debug/sim_v2 --no-viz --seed 42 --preset default --no-bias --out data/traj_v2_nobias.csv
-python scripts/v2/analyze_ekf.py --input data/traj_v2.csv --ekf-no-bias data/traj_v2_nobias.csv
+build/clang18-debug/sim --no-viz --seed 42 --preset default --out data/traj.csv
+build/clang18-debug/sim --no-viz --seed 42 --preset default --no-bias --out data/traj_nobias.csv
+python scripts/v2/analyze_ekf.py --input data/traj.csv --ekf-no-bias data/traj_nobias.csv
 
 # 协方差椭圆演化(静态 + 几何 + 动画):
-python scripts/v2/analyze_covariance.py --input data/traj_v2.csv
+python scripts/v2/analyze_covariance.py --input data/traj.csv
 
 # RK4-vs-Euler 归因(多 seed):
 python scripts/v2/sweep_integrator.py --n-seeds 30 --preset default

@@ -2,7 +2,7 @@
 # src/core/CMakeLists.txt
 #
 # core 库:封装项目核心数据结构、运动学、轨迹、CSV I/O 等基础设施。
-# 以 STATIC 库形式提供给 sim_v0、core_tests 等下游目标使用。
+# 以 STATIC 库形式提供给 sim、core_tests 等下游目标使用。
 # ---------------------------------------------------------------------------
 
 add_library(core STATIC)
@@ -12,9 +12,9 @@ target_sources(core
         types.cpp
         integrators.cpp
         kinematics.cpp
-        robot_model.cpp
         csv_format.cpp
         staged_command_source.cpp
+        logger.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
@@ -22,7 +22,6 @@ target_sources(core
         math.ixx
         integrators.ixx
         kinematics.ixx
-        robot_model.ixx
         trajectory.ixx
         csv_format.ixx
         csv_writer.ixx
