@@ -17,6 +17,7 @@ include(warnings)
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 include(rerun)
 include(cli11)
+include(yaml_cpp)
 
 # ------------------------------------------------------------------
 # 子模块库
@@ -25,6 +26,7 @@ add_subdirectory(src/core)
 add_subdirectory(src/viz)
 add_subdirectory(src/sensors)
 add_subdirectory(src/localization)
+add_subdirectory(src/planning)
 
 # ------------------------------------------------------------------
 # 目标: sim (唯一的仿真可执行档)

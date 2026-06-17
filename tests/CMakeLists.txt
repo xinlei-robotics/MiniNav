@@ -81,3 +81,27 @@ gtest_discover_tests(localization_tests
         PROPERTIES
         LABELS "localization"
 )
+
+# ------------------------------------------------------------------
+# planning 模块的测试
+# ------------------------------------------------------------------
+add_executable(planning_tests
+        planning/grid_types_tests.cpp
+        planning/planner_config_tests.cpp
+)
+
+target_link_libraries(planning_tests
+        PRIVATE
+        core
+        planning
+        GTest::gtest_main
+)
+
+set_property(TARGET planning_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(planning_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(planning_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "planning"
+)
