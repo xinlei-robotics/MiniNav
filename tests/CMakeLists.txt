@@ -89,6 +89,7 @@ add_executable(planning_tests
         planning/grid_types_tests.cpp
         planning/planner_config_tests.cpp
         planning/occupancy_grid_tests.cpp
+        planning/map_io_tests.cpp
 )
 
 target_link_libraries(planning_tests
@@ -96,6 +97,11 @@ target_link_libraries(planning_tests
         core
         planning
         GTest::gtest_main
+)
+
+# map_io_tests 通过 PROJECT_ROOT_DIR 定位 maps/ 下的手画测试地图。
+target_compile_definitions(planning_tests PRIVATE
+        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 set_property(TARGET planning_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
