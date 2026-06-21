@@ -17,6 +17,7 @@ target_sources(planning
         occupancy_grid.cpp
         map_io.cpp
         inflation.cpp
+        astar.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
@@ -25,6 +26,7 @@ target_sources(planning
         occupancy_grid.ixx
         map_io.ixx
         inflation.ixx
+        astar.ixx
 )
 
 target_link_libraries(planning
