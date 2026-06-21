@@ -1,0 +1,7 @@
+# corridor 地图描述(对齐 ROS map_server 的 image+yaml 约定)。
+image: corridor.pgm        # 同目录灰度图,暗=占据 亮=free
+resolution: 0.10           # 米/cell
+origin: [-1.0, -2.0, 0.0]  # 图像左下角对应的 world 坐标 (x, y, yaw);yaw 在 V3 忽略
+occupied_thresh: 0.65      # occ 概率 > 此值 → 占据
+free_thresh: 0.25          # occ 概率 < 此值 → free;之间 → unknown
+negate: 0                  # 是否反色
