@@ -88,6 +88,7 @@ gtest_discover_tests(localization_tests
 add_executable(planning_tests
         planning/grid_types_tests.cpp
         planning/planner_config_tests.cpp
+        planning/occupancy_grid_tests.cpp
 )
 
 target_link_libraries(planning_tests

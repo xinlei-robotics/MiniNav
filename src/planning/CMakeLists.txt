@@ -14,11 +14,13 @@ target_sources(planning
         PRIVATE
         grid_types.cpp
         planner_config.cpp
+        occupancy_grid.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
         grid_types.ixx
         planner_config.ixx
+        occupancy_grid.ixx
 )
 
 target_link_libraries(planning
