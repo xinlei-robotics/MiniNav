@@ -90,6 +90,7 @@ add_executable(planning_tests
         planning/planner_config_tests.cpp
         planning/occupancy_grid_tests.cpp
         planning/map_io_tests.cpp
+        planning/inflation_tests.cpp
 )
 
 target_link_libraries(planning_tests
