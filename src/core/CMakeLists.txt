@@ -30,7 +30,9 @@ target_sources(core
         random.ixx
 )
 
-target_link_libraries(core PUBLIC Eigen3::Eigen)
+target_link_libraries(core
+        PUBLIC Eigen3::Eigen
+        PRIVATE spdlog::spdlog)
 
 set_property(TARGET core PROPERTY CXX_SCAN_FOR_MODULES ON)
 set_target_properties(core PROPERTIES LINKER_LANGUAGE CXX)

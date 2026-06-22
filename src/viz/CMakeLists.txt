@@ -8,11 +8,13 @@ add_library(viz STATIC)
 
 target_sources(viz
         PRIVATE
+        viz_sink.cpp
         rerun_sink.cpp
         sim_state_log.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
+        viz_sink.ixx
         rerun_sink.ixx
         sim_state_log.ixx
 )

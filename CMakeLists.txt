@@ -18,6 +18,7 @@ find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 include(rerun)
 include(cli11)
 include(yaml_cpp)
+include(spdlog)
 
 # ------------------------------------------------------------------
 # 子模块库
