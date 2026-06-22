@@ -114,3 +114,26 @@ gtest_discover_tests(planning_tests
         PROPERTIES
         LABELS "planning"
 )
+
+# ------------------------------------------------------------------
+# viz 模块的测试(gmock:用 MockVizSink 隔离 Rerun 后端)
+# ------------------------------------------------------------------
+add_executable(viz_tests
+        viz/viz_sink_log_tests.cpp
+)
+
+target_link_libraries(viz_tests
+        PRIVATE
+        core
+        viz
+        GTest::gmock_main
+)
+
+set_property(TARGET viz_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(viz_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(viz_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "viz"
+)

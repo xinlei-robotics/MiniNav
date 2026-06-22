@@ -8,7 +8,7 @@ module mininav.viz.sim_state_log;
 
 import mininav.core.types;
 import mininav.core.math;
-import mininav.viz.rerun_sink;
+import mininav.viz.sink;
 
 namespace mininav
 {
@@ -39,7 +39,7 @@ namespace mininav
     constexpr int kEkfPy = 1;
     constexpr int kEkfTheta = 2;
 
-    void register_statics(RerunSink& sink,
+    void register_statics(VizSink& sink,
                           const std::string_view entity_root)
     {
         sink.log_axes_static("/world/origin", 1.0F);
@@ -50,7 +50,7 @@ namespace mininav
         sink.log_axes_static(root + "/ekf/body", 0.5F);
     }
 
-    void reset_trails(RerunSink& sink, const std::string_view entity_root)
+    void reset_trails(VizSink& sink, const std::string_view entity_root)
     {
         const std::string root{entity_root};
         sink.clear_trail(trail_path_for(root + "/truth"));
@@ -58,7 +58,7 @@ namespace mininav
         sink.clear_trail(trail_path_for(root + "/ekf"));
     }
 
-    void log_to_rerun(RerunSink& sink,
+    void log_to_rerun(VizSink& sink,
                       const SimState& state,
                       const std::string_view entity_root)
     {
