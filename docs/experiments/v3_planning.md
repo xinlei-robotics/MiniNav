@@ -40,7 +40,7 @@ V2 把概率状态估计打磨完,留下一条根本性的未解问题:仅靠本
 
 演示场景(`maps/office.yaml`,40×30 @ 0.05 m,两室一门):
 
-![plan overview](../../results/v3/plan_overview.png)
+![plan overview](../../results/v3/plan_office.png)
 
 绿线即 A\* 路径,从左下 `start` 穿过中间墙的门洞,绕开右侧竖墙到达右上 `goal`;
 浅灰是按机器人半径 + 安全裕度膨胀出的安全层(`inflation_radius = 0.05 m`),
@@ -97,7 +97,7 @@ V2 把概率状态估计打磨完,留下一条根本性的未解问题:仅靠本
 每道隔墙在每个房间段开一个门洞(保证连通),房内再撒随机柱子。占据率约 17.6%,
 共 250 000 个 cell(是 200×200 基准的 6.25×)。
 
-![plan overview 500](../../results/v3/plan_overview500.png)
+![plan overview 500](../../results/v3/plan_office500.png)
 
 从左下角房间规划到右上角房间(贯穿整栋楼),`config/planner.yaml` 配置
 (Octile、8 连通、膨胀 0.05 m):

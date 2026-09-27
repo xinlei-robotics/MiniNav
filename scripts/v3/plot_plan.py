@@ -8,7 +8,8 @@ plot_plan.py — 把一次全局规划画成发表用静态图(占据栅格 + �
     inflation_radius 复算,与 C++ 的欧氏膨胀近似一致,仅用于展示安全裕度)
   - A* 路径折线 + 起点(绿)/ 目标(红)
 
-产出:results/v3/plan_overview.png
+产出:results/v3/plan_<map>.png(文件名随地图 stem,与 search_<map>.gif 同一约定,
+      多张地图的出图不会互相覆盖)
 
 Run:
     ./build/clang18-debug/sim --map maps/office.yaml --start 0.15,0.15 \\
@@ -113,7 +114,7 @@ def main() -> None:
     ax.grid(True, ls=":", alpha=0.3)
 
     args.output.mkdir(parents=True, exist_ok=True)
-    out = args.output / "plan_overview.png"
+    out = args.output / f"plan_{args.map.stem}.png"
     fig.tight_layout()
     fig.savefig(out, dpi=140)
     print(f"wrote {out}")
