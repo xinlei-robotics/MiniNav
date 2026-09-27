@@ -235,21 +235,85 @@ TEST(AStar, CostGradientPrefersClearanceAtEqualLength) {
 }
 
 // ---------------------------------------------------------------------------
-// 性能冒烟:200x200 在 Release 下 ≤ 50ms
+// 规模与性能:里程碑 "200x200 单次规划 ≤ 50ms(Release)"
+//
+// wall-clock 只在 Release 下有意义,而 CI 跑的是 Debug —— 所以另用与构建类型、
+// 机器负载都无关的确定性断言守护"算法工作量":启发式确实在收束搜索(展开数
+// 上界),以及压力图上的精确最优长度与展开数区间。
 // ---------------------------------------------------------------------------
 
-TEST(AStar, MeetsTimingBudgetOn200x200) {
-  constexpr double kRes = 0.05;
-  std::vector<std::int8_t> data(200u * 200u, kFree);
-  const OccupancyGrid grid{200, 200, kRes, Eigen::Vector2d{0.0, 0.0}, std::move(data)};
-  const AStarPlanner planner{grid, cfg(Connectivity::Eight, Heuristic::Octile)};
-  // cell 中心 world 坐标随 resolution 缩放(at_cell 假设 res=1)。
-  const Pose2D start{0.5 * kRes, 0.5 * kRes, 0.0};
-  const Pose2D goal{199.5 * kRes, 199.5 * kRes, 0.0};
-  const PlanResult r = planner.plan(start, goal);
+namespace {
+
+// 蛇形迷宫:y = 2, 5, 8, … 每 3 行一道横墙,缺口左右交替,墙间是 2 格高的走廊。
+// 从 (0,0) 到 (n-1,n-1) 必须蛇行穿过全部走廊;Octile 启发式一直指向右上角,
+// 对这种来回折返的结构几乎失效,A* 被迫展开接近全部 free cell —— 接近最坏
+// 情况的负载,而不是空图对角线那种最好情况。
+OccupancyGrid serpentine_map(int n) {
+  std::vector<GridCoord> walls;
+  int wall = 0;
+  for (int y = 2; y < n; y += 3, ++wall) {
+    const int gap = (wall % 2 == 0) ? n - 1 : 0;  // 缺口左右交替
+    for (int x = 0; x < n; ++x) {
+      if (x != gap) {
+        walls.push_back({x, y});
+      }
+    }
+  }
+  return make_grid(n, n, walls);
+}
+
+std::size_t count_free(const OccupancyGrid& grid) {
+  std::size_t n = 0;
+  for (int y = 0; y < grid.height(); ++y) {
+    for (int x = 0; x < grid.width(); ++x) {
+      if (grid.is_free(GridCoord{x, y})) {
+        ++n;
+      }
+    }
+  }
+  return n;
+}
+
+}  // namespace
+
+// 空图对角线:只有对角线上的 cell 满足 f = f*(偏离一步 f 至少大 2 − √2 ≈ 0.586),
+// 所以 A* 恰好展开 n 个节点;启发式若失效退化成 Dijkstra,同一问题要展开近 n² 个。
+TEST(AStar, HeuristicFocusesSearchOnOpenMap) {
+  constexpr int kN = 200;
+  const AStarPlanner planner{make_grid(kN, kN, {}),
+                             cfg(Connectivity::Eight, Heuristic::Octile)};
+  const PlanResult r = planner.plan(at_cell(0, 0), at_cell(kN - 1, kN - 1));
   ASSERT_TRUE(r.success);
-  EXPECT_GT(r.expanded_nodes, 0u);
-#ifdef NDEBUG
-  EXPECT_LT(r.plan_time_ms, 50.0);  // 里程碑指标(仅 Release 断言)
+  EXPECT_NEAR(r.path.length(), (kN - 1) * kSqrt2, kEps);
+  // 理论值恰为 kN;留 2 倍余量,不把 tie-break 细节写死。
+  EXPECT_LE(r.expanded_nodes, 2 * static_cast<std::size_t>(kN));
+}
+
+// 200x200 蛇形迷宫上的精确最短路:67 条走廊各 198 直 + 1 斜(198 + √2);66 个
+// 门洞各 2 个正交步(防穿角禁止斜着进出门洞)→ 67·(198 + √2) + 132。
+TEST(AStar, FindsExactShortestPathThroughSerpentine200x200) {
+  const OccupancyGrid grid = serpentine_map(200);
+  const AStarPlanner planner{grid, cfg(Connectivity::Eight, Heuristic::Octile)};
+  const PlanResult r = planner.plan(at_cell(0, 0), at_cell(199, 199));
+  ASSERT_TRUE(r.success);
+  EXPECT_NEAR(r.path.length(), 67.0 * (198.0 + kSqrt2) + 132.0, 1e-6);
+
+  // 负载前提:这张图确实逼 A* 搜遍大半张图(防止计时测试再次退化成最好情况);
+  // closed 表保证每个 cell 至多展开一次。
+  const std::size_t free_cells = count_free(grid);
+  EXPECT_GE(r.expanded_nodes, free_cells / 2);
+  EXPECT_LE(r.expanded_nodes, free_cells);
+}
+
+// 里程碑指标本身。Debug 下显式跳过而不是静默通过,CI 日志里能看出它没被执行。
+TEST(AStar, MeetsTimingBudgetOnSerpentine200x200) {
+#ifndef NDEBUG
+  GTEST_SKIP() << "wall-clock budget is a Release-build milestone";
+#else
+  const AStarPlanner planner{serpentine_map(200),
+                             cfg(Connectivity::Eight, Heuristic::Octile)};
+  const PlanResult r = planner.plan(at_cell(0, 0), at_cell(199, 199));
+  ASSERT_TRUE(r.success);
+  EXPECT_LT(r.plan_time_ms, 50.0);
 #endif
 }
