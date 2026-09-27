@@ -9,6 +9,7 @@ import mininav.core.types;
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <stdexcept>
 #include <vector>
 
 namespace {
@@ -107,6 +108,26 @@ TEST(AStar, AdmissibleHeuristicsAgreeOnOptimalLength) {
   EXPECT_NEAR(len[0], 12.0, kEps);
   EXPECT_NEAR(len[1], len[0], kEps);
   EXPECT_NEAR(len[2], len[0], kEps);
+}
+
+// 8 连通下只有 Euclidean / Octile admissible,二者同样给出相同最优长度。
+// 绕墙最短 = 8 + 2√2:(0,0)→(1,4) 与 (3,4)→(4,0) 各为 3 直 + 1 斜;门洞 (2,4)
+// 两侧的斜穿被防穿角规则禁止((2,3) 是墙),只能走 (1,4)→(2,4)→(3,4) 两个正交步。
+TEST(AStar, AdmissibleHeuristicsAgreeOnOptimalLengthEightConnected) {
+  for (const Heuristic h : {Heuristic::Euclidean, Heuristic::Octile}) {
+    const AStarPlanner planner{wall_map(), cfg(Connectivity::Eight, h)};
+    const PlanResult r = planner.plan(at_cell(0, 0), at_cell(4, 0));
+    ASSERT_TRUE(r.success);
+    EXPECT_NEAR(r.path.length(), 8.0 + 2.0 * kSqrt2, kEps);
+  }
+}
+
+// Manhattan 在 8 连通下高估对角步(记 2,实为 √2),不 admissible —— 最优性
+// 保证会被悄悄打破,所以构造期直接拒绝,而不是返回一条次优路径。
+TEST(AStar, RejectsInadmissibleManhattanUnderEightConnectivity) {
+  EXPECT_THROW((AStarPlanner{make_grid(5, 5, {}),
+                             cfg(Connectivity::Eight, Heuristic::Manhattan)}),
+               std::invalid_argument);
 }
 
 // ---------------------------------------------------------------------------

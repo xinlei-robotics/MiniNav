@@ -233,7 +233,8 @@ namespace
                        "Planning start as \"x,y\" in world meters (default: grid center).");
         app.add_option("--goal", opts.goal_str,
                        "Planning goal as \"x,y\" in world meters (required in planning mode).");
-        app.add_option("--heuristic", opts.heuristic_name, "A* heuristic override.")
+        app.add_option("--heuristic", opts.heuristic_name,
+                       "A* heuristic override (manhattan requires --connectivity 4).")
            ->check(CLI::IsMember({"manhattan", "euclidean", "octile"}));
         app.add_option("--connectivity", opts.connectivity,
                        "Grid connectivity override (4 or 8).");

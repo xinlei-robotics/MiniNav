@@ -3,6 +3,7 @@ import mininav.planning.grid_types;
 
 #include <gtest/gtest.h>
 
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -70,4 +71,13 @@ TEST(PlannerConfig, RejectsInvalidConnectivity) {
 
 TEST(PlannerConfig, RejectsUnknownHeuristic) {
   EXPECT_THROW((void)parse_planner_config("heuristic: diagonal"), std::runtime_error);
+}
+
+// manhattan 只在 4 连通下 admissible。connectivity 缺省为 8,所以单写
+// `heuristic: manhattan` 也必须被拒绝;显式配 4 连通则合法。
+TEST(PlannerConfig, RejectsManhattanUnlessFourConnected) {
+  EXPECT_THROW((void)parse_planner_config("heuristic: manhattan\nconnectivity: 8"),
+               std::runtime_error);
+  EXPECT_THROW((void)parse_planner_config("heuristic: manhattan"), std::runtime_error);
+  EXPECT_NO_THROW((void)parse_planner_config("heuristic: manhattan\nconnectivity: 4"));
 }

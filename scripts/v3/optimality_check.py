@@ -4,9 +4,12 @@ optimality_check.py — A* 路径长度 vs Dijkstra ground-truth 偏差。
 
 对每张测试地图,在 Python 端复刻 C++ A* 的栅格、步代价(直走 1 / 对角 √2)、
 8 连通防穿角规则,跑一遍 **Dijkstra**(无启发,保证最优)拿到 ground-truth
-最短路长度;再驱动 `sim` 拿 A* 的实际路径长度,比较二者偏差。
+最短路长度;再驱动 `sim` 拿 A* 的实际路径长度,比较二者偏差。A* 的启发式由
+`--heuristic` 显式指定(默认 octile,与 config/planner.yaml 一致),不依赖 sim
+的内置默认值。
 
-里程碑指标(v3_plan §0.3):偏差 ≤ 1 个 cell(= 1·resolution)。
+里程碑指标(docs/project_management.md 的 V3 milestone):偏差 ≤ 1 个 cell
+(= 1·resolution)。
 
 产出:
   - results/v3/optimality.png   各地图 A* 与 Dijkstra 长度对比 + 偏差(cell)
@@ -90,11 +93,11 @@ def dijkstra_length(grid: Grid, start, goal, connectivity: int,
 
 
 def run_astar(sim_bin: Path, map_yaml: Path, start: str, goal: str,
-              connectivity: int, out_csv: Path) -> dict:
+              connectivity: int, heuristic: str, out_csv: Path) -> dict:
     cmd = [
         str(sim_bin), "--map", str(map_yaml), "--start", start, "--goal", goal,
-        "--connectivity", str(connectivity), "--inflation-radius", "0.0",
-        "--no-viz", "--out", str(out_csv),
+        "--connectivity", str(connectivity), "--heuristic", heuristic,
+        "--inflation-radius", "0.0", "--no-viz", "--out", str(out_csv),
     ]
     subprocess.run(cmd, check=True, capture_output=True, text=True)
     meta, _ = read_path_csv(out_csv)
@@ -117,10 +120,16 @@ def main() -> None:
     ap.add_argument("--start", default="auto",
                     help="world start \"x,y\" or 'auto' (grid center)")
     ap.add_argument("--connectivity", type=int, default=8, choices=(4, 8))
+    ap.add_argument("--heuristic", default="octile",
+                    choices=("manhattan", "euclidean", "octile"))
     ap.add_argument("--sim-bin", type=Path,
                     default=Path("build/clang18-release/sim"))
     ap.add_argument("--output", type=Path, default=Path("results/v3"))
     args = ap.parse_args()
+    # 与 C++ AStarPlanner 同一条规则:manhattan 在 8 连通下不 admissible,直接拒绝。
+    if args.heuristic == "manhattan" and args.connectivity == 8:
+        raise SystemExit("--heuristic manhattan is inadmissible with --connectivity 8; "
+                         "use octile/euclidean or --connectivity 4")
 
     sim_bin = args.sim_bin
     if not sim_bin.exists():
@@ -146,7 +155,8 @@ def main() -> None:
             print(f"{stem:<12}  (no --goal-of {stem}=x,y; skipped)")
             continue
 
-        meta = run_astar(sim_bin, map_yaml, start, goal, args.connectivity, tmp)
+        meta = run_astar(sim_bin, map_yaml, start, goal, args.connectivity,
+                         args.heuristic, tmp)
         a_len = float(meta["path_length_m"]) if meta.get("success") == "1" else math.nan
 
         s = tuple(float(v) for v in start.split(","))
@@ -181,7 +191,7 @@ def main() -> None:
         ax.set_xticklabels(names)
         ax.set_ylabel("path length [m]")
         ax.set_title(f"A* optimality vs Dijkstra ground-truth "
-                     f"({args.connectivity}-connected)\n"
+                     f"({args.heuristic}, {args.connectivity}-connected)\n"
                      f"milestone: deviation ≤ 1 cell")
         ax.legend()
         ax.grid(True, axis="y", ls=":", alpha=0.4)

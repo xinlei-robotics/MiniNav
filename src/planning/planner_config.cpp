@@ -84,6 +84,15 @@ namespace mininav::planning
             {
                 cfg.cost_weight = node["cost_weight"].as<double>();
             }
+            // 组合校验放在全部字段解析之后:connectivity 缺省为 8,所以单写
+            // `heuristic: manhattan` 同样会被拒绝。
+            if (!is_admissible(cfg.heuristic, cfg.connectivity))
+            {
+                throw std::runtime_error(
+                    "planner_config: heuristic 'manhattan' is inadmissible with connectivity 8 "
+                    "(a diagonal step costs sqrt(2) but Manhattan counts 2); "
+                    "use 'octile' or 'euclidean', or set connectivity: 4");
+            }
             return cfg;
         }
     } // namespace

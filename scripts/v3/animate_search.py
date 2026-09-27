@@ -156,6 +156,10 @@ def main() -> None:
                     help="末尾停留(展示完整路径)秒数")
     ap.add_argument("--output", type=Path, default=None)
     args = ap.parse_args()
+    # 与 C++ AStarPlanner 同一条规则:manhattan 在 8 连通下不 admissible,直接拒绝。
+    if args.heuristic == "manhattan" and args.connectivity == 8:
+        raise SystemExit("--heuristic manhattan is inadmissible with --connectivity 8; "
+                         "use octile/euclidean or --connectivity 4")
 
     grid = load_grid(args.map)
     infl = inflate(grid, args.inflation_radius)

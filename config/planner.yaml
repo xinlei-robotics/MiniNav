@@ -7,7 +7,9 @@
 #
 # 字段语义:
 #   inflation_radius  障碍物膨胀半径(米)= 机器人半径 + 安全裕度。
-#   heuristic         A* 启发式:manhattan / euclidean / octile(均 admissible)。
+#   heuristic         A* 启发式:manhattan / euclidean / octile。euclidean / octile
+#                     在 4、8 连通下都 admissible;manhattan 只在 4 连通下 admissible
+#                     (8 连通下高估对角步,会丢掉最优性),与 8 连通搭配时加载即报错。
 #   connectivity      栅格邻接度:4 或 8(8 连通带防穿角)。
 #   allow_unknown     是否允许穿越 unknown cell(保守默认 false)。
 #   cost_weight       代价梯度权重:>0 时等长路径倾向远离障碍;0 为纯最短路。

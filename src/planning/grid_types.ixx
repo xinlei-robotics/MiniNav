@@ -43,6 +43,19 @@ export namespace mininav::planning
     };
 
     // ---------------------------------------------------------------------------
+    // is_admissible: 启发式在给定连通度下是否 admissible(从不高估真实代价)。
+    //
+    // 唯一的反例是 Manhattan + 8 连通:对角一步的真实代价是 √2,Manhattan 却记为
+    // 2 —— 高估,A* 因此失去最优性保证(office500 实测比最优路径长 1.13 cell)。
+    // Euclidean / Octile 在 4、8 连通下都不高估;Manhattan 在无障碍 4 连通栅格上
+    // 恰好等于真实最短代价,有障碍时是它的下界。推导见 docs/math/astar_planning.md。
+    // ---------------------------------------------------------------------------
+    [[nodiscard]] constexpr bool is_admissible(const Heuristic h, const Connectivity c) noexcept
+    {
+        return !(h == Heuristic::Manhattan && c == Connectivity::Eight);
+    }
+
+    // ---------------------------------------------------------------------------
     // Path: 几何路径 = world 坐标的 waypoint 序列。
     //   yaw 在 V3 非必需(跟踪在 V4 用 look-ahead 自算朝向),但保留 Pose2D
     //   以便 V4 直接消费。length() 是路径-最优性比对的核心量。

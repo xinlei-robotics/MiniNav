@@ -28,8 +28,8 @@ V2 把概率状态估计打磨完,留下一条根本性的未解问题:仅靠本
 ## 2. 系统与方法
 
 - **规划器**:`mininav::planning::AStarPlanner`(扁平 `g` 表 + 二叉堆 open set,
-  4/8 连通,Manhattan/Euclidean/Octile 启发,tie-break 偏向小 `h`,8 连通带
-  防穿角)。一致启发式下首次出队目标即最优。
+  4/8 连通,Euclidean/Octile 启发 + 仅限 4 连通的 Manhattan(见 §4.1),tie-break
+  偏向小 `h`,8 连通带防穿角)。一致启发式下首次出队目标即最优。
 - **地图**:ROS `map_server` 风格的 image(PGM)+ yaml。手画测试地图见
   `maps/{office,maze,room,corridor}`;基准用 `scripts/v3/benchmark_planner.py`
   程序化生成 N×N 随机障碍地图(固定种子 + 保留 L 形安全走廊保证可达)。
@@ -114,7 +114,8 @@ V2 把概率状态估计打磨完,留下一条根本性的未解问题:仅靠本
 
 `scripts/v3/optimality_check.py` 在 Python 端复刻 C++ 的栅格、步代价(直走 1 /
 对角 √2)与 8 连通防穿角规则,跑无启发的 **Dijkstra** 拿 ground-truth 最短长度,
-与 `sim` 的 A\* 实际路径长度比较(膨胀半径置 0,纯几何最短路):
+与 `sim` 的 A\* 实际路径长度比较(8 连通 + 显式 `--heuristic octile`,与
+`config/planner.yaml` 一致;膨胀半径置 0,纯几何最短路):
 
 | 地图     | A\* 长度 [m] | Dijkstra 长度 [m] | 偏差 [cell] | 达标 |
 |--------|-----------|-----------------|-----------|----|
@@ -128,8 +129,33 @@ V2 把概率状态估计打磨完,留下一条根本性的未解问题:仅靠本
 "≤ 1 cell"指标。这验证了 Octile 启发式的 admissible/consistent 性质:在一致
 启发式下,A\* 与无启发 Dijkstra 给出相同的最优长度,只是扩展的节点更少。
 
-> `planning_tests` 里另有 `AStar*` 系列单测从代码侧锁住同一主张(三种启发式给出
-> 相同最优长度、绕墙已知最短路、不可达返回 false、防穿角、tie-break 确定性)。
+> `planning_tests` 里另有 `AStar*` 系列单测从代码侧锁住同一主张(4 连通下三种启发式、
+> 8 连通下 Euclidean/Octile 给出相同最优长度,绕墙已知最短路、不可达返回 false、
+> 防穿角、tie-break 确定性)。
+
+### 4.1 启发式必须与连通度匹配
+
+最优性保证的前提是启发式 **admissible**:从不高估剩余的真实代价。8 连通下对角
+一步的真实代价是 √2,而 Manhattan 把它记为 2 —— 它会高估,A\* 退化成偏贪心的
+搜索:扩展节点骤减,但路径不再保证最优。office500 上实测(8 连通、膨胀置 0、
+起止点同 §3.1):
+
+| 启发式       | 路径长度 [m]              | 扩展节点数  |
+|-----------|-----------------------|--------|
+| octile    | 34.1843               | 40 945 |
+| euclidean | 34.1843               | 55 398 |
+| manhattan | **34.2408**(+1.13 cell) | 976    |
+
+Manhattan 的路径比最优长 1.13 个 cell,**超出** ≤ 1 cell 指标 —— 而且是悄无声息
+地超出:规划成功、路径看起来也正常。因此 "manhattan + 8 连通" 被定为非法组合:
+`load_planner_config` 与 `AStarPlanner` 构造都会直接报错(CLI 的 `--heuristic` /
+`--connectivity` 覆盖同样经过构造期校验),`RejectsManhattanUnlessFourConnected` /
+`RejectsInadmissibleManhattanUnderEightConnectivity` 两条单测锁住这条规则。上表
+manhattan 一行是加入校验之前测得的。
+
+同表还给出一个正面结论:octile 是无障碍 8 连通栅格上的**精确**剩余代价,比
+euclidean 更紧,在同样最优的前提下少扩展约 26% 的节点 —— 这是 `planner.yaml`
+默认选它的原因。推导见 [`docs/math/astar_planning.md`](../math/astar_planning.md)。
 
 ---
 

@@ -54,7 +54,8 @@ export namespace mininav::planning
     // 时退化为纯最短路径(此时各 admissible 启发式给出相同最优长度)。
     //
     // 连通度 / 启发式 / 是否可走 unknown 均来自 cfg。8 连通带防穿角
-    // (corner-cutting:对角移动要求两个正交邻居都可走)。
+    // (corner-cutting:对角移动要求两个正交邻居都可走)。启发式与连通度的组合
+    // 必须 admissible(见 is_admissible),否则构造时抛 std::invalid_argument。
     // ---------------------------------------------------------------------------
     class AStarPlanner final : public GlobalPlanner
     {
