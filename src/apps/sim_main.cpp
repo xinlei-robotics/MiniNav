@@ -45,15 +45,19 @@ import mininav.planning.astar;
 // ===========================================================================
 // MiniNav simulation.
 //
-// 室内差分驱动机器人的定位仿真:
-//   每步 cmd → 执行噪声 → encoder + IMU 测量 → wheel-odometry 基线 + 6D EKF
-//   (predict + encoder update + IMU update, 含在线 gyro-bias 估计)。
+// 一个二进制,两种模式:
+//   默认      室内差分驱动机器人的定位仿真:
+//             每步 cmd → 执行噪声 → encoder + IMU 测量 → wheel-odometry 基线 + 6D EKF
+//             (predict + encoder update + IMU update, 含在线 gyro-bias 估计)。
+//   --map     一次性、无 RNG 的全局规划(V3):
+//             load map → inflate → A* → path.csv + Rerun 规划视图(run_planning)。
 //
 // 代码分层:
 //   NoisePreset   —— 三档噪声标定(纯数据)。
 //   CliOptions    —— 命令行选项(CLI11 直接绑定到结构体成员)。
 //   SimConfig     —— 解析/求值后的运行配置(preset + seed + 旋钮)。
 //   Simulator     —— 估计管线: 拥有全部仿真组件与 EKF, step(t) 推进一帧。
+//   run_planning  —— 规划模式入口: 地图 / 配置 / 起止点 → PlanResult → CSV + viz。
 //   main          —— 只做 I/O / 可视化 / CSV 落盘, 不含仿真逻辑。
 // ===========================================================================
 
@@ -511,10 +515,10 @@ namespace
     // V3 planning mode (triggered by --map).
     //
     // 一次性、**无 RNG** 的全局规划:load map -> inflate -> A* -> path.csv + viz。
-    // 与 V2 的逐步运动仿真分流(同一个 sim 二进制,演进而非并存,见 v3_plan §2.1)。
+    // 与 V2 的逐步运动仿真分流(同一个 sim 二进制,演进而非并存,见 docs/v3_summary.md §2.3)。
     //
     // 起点 start 是一个普通 Pose2D —— 在完整系统里它就是 V2 EKF 的估计位姿
-    // (这是 V2→V3 的接缝)。但规划入口刻意保持无 RNG / 逐字节确定(v3_plan §0.3:
+    // (这是 V2→V3 的接缝)。但规划入口刻意保持无 RNG / 逐字节确定(docs/v3_summary.md §3.8:
     // 同 map+start+goal+config → path.csv 逐字节一致),所以不在此入口里跑会消耗
     // RNG 的 EKF;EKF→start 的注入留给上层调用方。
     // =======================================================================
@@ -608,7 +612,7 @@ namespace
 
     // path.csv:逐字节确定(无时间戳、无 plan_time_ms)。header 嵌入 map/start/goal/
     // heuristic/connectivity/inflation_radius/success/expanded_nodes/path_length_m,
-    // 一次规划自包含、可复现、可比对(v3_plan §6.3)。
+    // 一次规划自包含、可复现、可比对(docs/v3_summary.md §4.3)。
     void write_path_csv(const fs::path& path, const CliOptions& opts,
                         const mininav::planning::PlannerConfig& cfg,
                         const mininav::Pose2D& start, const mininav::Pose2D& goal,

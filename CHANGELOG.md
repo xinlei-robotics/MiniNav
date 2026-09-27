@@ -7,8 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-27
+
+V3 — Global Path Planning.
+
+Adds the first model of the environment: an occupancy-grid map loaded from a
+ROS-style PGM + `map.yaml`, Euclidean obstacle inflation, and an A\* global
+planner behind a `nav2_core`-shaped `GlobalPlanner` facade, driven from
+`sim --map` with a YAML planner config. Also swaps the logger backend to spdlog
+and makes the visualization layer mockable with gmock. Built across PRs
+#67–#73.
+
+### Added
+
+- `planning` static library (depends only on `core` and yaml-cpp)
+    - `mininav.planning.grid_types` — `GridCoord`, world-frame `Path` with
+      cumulative `length()`, `Heuristic` / `Connectivity` enums,
+      `PlannerConfig`, and `constexpr is_admissible(Heuristic, Connectivity)`
+    - `mininav.planning.occupancy_grid` — `OccupancyGrid` with ROS occupancy
+      values (free 0 / occupied 100 / unknown −1), lower-left `origin`,
+      floor-based `world_to_grid`, cell-center `grid_to_world`, and
+      out-of-bounds cells reading as occupied
+    - `mininav.planning.map_io` — `load_occupancy_grid(map.yaml)`: self-written
+      PGM parser (ASCII P2 and binary P5, 8-bit), ROS threshold semantics
+      (`occupied_thresh` / `free_thresh` / `negate`), y-axis flip, image path
+      resolved relative to the YAML file, and descriptive errors for missing
+      files, missing keys, bad magic, or pixel-count mismatches
+    - `mininav.planning.inflation` — multi-source Euclidean distance transform
+      (`obstacle_distance_cells`, `costmap_2d`-style nearest-source
+      propagation) and boolean `inflate(grid, radius_m)`; unknown cells inside
+      the radius are conservatively marked occupied
+    - `mininav.planning.astar` — `GlobalPlanner` interface and `AStarPlanner`:
+      flat `g` / `parent` / `closed` tables, binary-heap open set with lazy
+      deletion, 4/8 connectivity, Manhattan / Euclidean / Octile heuristics,
+      tie-breaking toward the goal, corner-cutting prevention, and an opt-in
+      clearance cost gradient (`cost_weight`); `PlanResult` carries the path,
+      success flag, expanded-node count, and planning time
+    - `mininav.planning.planner_config` — `planner.yaml` parse / load /
+      serialize with yaml-cpp; unknown (misspelled) keys are rejected at load time
+- Admissibility validation: pairing the Manhattan heuristic with
+  8-connectivity (which overestimates diagonal steps and silently breaks the
+  optimality guarantee) is rejected by `parse_planner_config` and by the
+  `AStarPlanner` constructor, so CLI overrides are caught too
+- `sim --map` planning mode — a one-shot, RNG-free plan with `--map`,
+  `--config`, `--start`, `--goal`, `--heuristic`, `--connectivity`, and
+  `--inflation-radius`; writes a byte-deterministic `path.csv` whose header
+  embeds the map, start, goal, heuristic, connectivity, inflation radius,
+  success flag, expanded-node count, and path length
+- `config/planner.yaml` — default planner configuration (Octile,
+  8-connectivity, 0.05 m inflation)
+- Maps: hand-drawn `corridor`, `room`, `maze`, and `office` (P2) plus a
+  procedurally generated 500×500 `office500` floor plan (P5)
+- Rerun planning view: `PlanScene` + `log_plan` (`mininav.viz.plan_log`) log the
+  occupied cells, inflation margin, path, and start/goal poses as static
+  entities; `VizSink` gains backend-agnostic `log_points_static` /
+  `log_line_strip_static` primitives, so `viz` does not depend on `planning`
+- `VizSink` abstract interface with `RerunSink` as its implementation, and a
+  gmock-based `viz_tests` target (CTest label `viz`) that asserts the entity
+  layout without spawning a viewer
+- `planning_tests` (CTest label `planning`, 62 tests), including exact optimal
+  path lengths, heuristic agreement under 4- and 8-connectivity, rejection of
+  inadmissible pairings, and a 200×200 serpentine stress maze with
+  build-independent expansion-count checks plus the Release-only 50 ms timing
+  budget
+- Python scripts under `scripts/v3/`: `plot_plan.py` (map + inflation + path
+  figure), `benchmark_planner.py` (timing on random N×N maps),
+  `optimality_check.py` (A\* vs Dijkstra ground truth), `animate_search.py`
+  (animated A\* expansion), `gen_office500.py` (floor-plan generator); figures
+  emitted to `results/v3/`, named after the map
+- Documentation: `docs/v3_summary.md`, `docs/experiments/v3_planning.md` (timing,
+  optimality, heuristic admissibility, determinism), and
+  `docs/math/astar_planning.md` (grids, configuration-space inflation, the A\*
+  optimality proof, heuristic admissibility and consistency)
+
 ### Changed
 
+- Logger backend switched from the hand-written iostream logger to spdlog,
+  linked privately into `core`; the `mininav.core.logger` interface is
+  unchanged, messages are passed as `"{}"` arguments rather than format
+  strings, and the `noexcept` contract is preserved
+- `sim_state_log` free functions take `VizSink&` instead of `RerunSink&`
 - Consolidated the simulation into a single `sim` binary (`src/apps/sim_main.cpp`)
   and a single `SimState` record type. `main` now reflects only the current design
   rather than carrying every past version side by side.

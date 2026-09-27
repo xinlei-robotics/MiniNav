@@ -115,14 +115,14 @@ answers "what does done look like for this version?"
 |--------------------------------------|----------------|-------------------------------------------------------------------------|
 | V0 — Simulation Scaffolding          | ✅ closed       | CSV byte-identical across launch modes                                  |
 | V1 — Sensors, Noise & Odometry Drift | ✅ closed       | 0.2–0.6 m drift at 20s, default preset; byte-exact seed reproducibility |
-| V2 — EKF Sensor Fusion               | 🔄 open        | RMSE reduction ≥ 50% vs odom; Jacobian finite-diff tolerance ≤ 1e-6     |
-| V3 — Path Planning                   | open           | A* on 200×200 map ≤ 50 ms; path length within 1 cell of shortest        |
-| V4 — Control + ROS 2                 | open           | Pure Pursuit tracking error: mean ≤ 10 cm, peak ≤ 30 cm                 |
+| V2 — EKF Sensor Fusion               | ✅ closed       | RMSE reduction ≥ 50% vs odom; Jacobian finite-diff tolerance ≤ 1e-6     |
+| V3 — Path Planning                   | ✅ closed       | A* on 200×200 map ≤ 50 ms; path length within 1 cell of shortest        |
+| V4 — Control + ROS 2                 | open (next)    | Pure Pursuit tracking error: mean ≤ 10 cm, peak ≤ 30 cm                 |
 | V5 — Full Simulation Loop            | open           | Goal-reach rate ≥ 80% on 5 scenarios; e2e latency ≤ 100 ms              |
 | V6 — Real Robot Deployment           | open           | Sim-to-real gap table; Hausdorff distance quantified                    |
 | V7 — SLAM Integration                | open (stretch) | Indoor mapping + navigation video                                       |
 
-See [`docs/project-overview.md`](project_overview.md) for the full
+See [`docs/project_overview.md`](project_overview.md) for the full
 version roadmap and rationale.
 
 ---

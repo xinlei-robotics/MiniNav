@@ -17,7 +17,7 @@ export namespace mininav
     //
     // 关键边界:本结构只认 Eigen::Vector2d(world 坐标)与 Pose2D —— 不认任何
     // planning 类型(OccupancyGrid / Path / PlanResult)。因此 viz 库不依赖
-    // planning 库(见 docs/v3_plan.md §2.1 的依赖图)。把 OccupancyGrid 的占据
+    // planning 库(见 docs/v3_summary.md §2.1 的依赖图)。把 OccupancyGrid 的占据
     // cell、膨胀 cell、A* 路径折线转成点集,是上层(app)的职责;log_plan 只负责
     // 把这些点集按约定的实体树布局推到 VizSink。
     //
@@ -35,7 +35,7 @@ export namespace mininav
     };
 
     // ---------------------------------------------------------------------------
-    // log_plan: 把一次规划场景推到 VizSink,实体树布局对齐 docs/v3_plan.md §6.1:
+    // log_plan: 把一次规划场景推到 VizSink,实体树布局见 docs/v3_summary.md §7.2:
     //   {root}/map            占据 cell(深色点)
     //   {root}/map/inflated   膨胀层(半透明灰)
     //   {root}/plan/expansion A* 扩展顺序(可选,蓝)

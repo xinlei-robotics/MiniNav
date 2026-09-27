@@ -8,8 +8,8 @@
 # (a version mismatch will silently break the gRPC connection).
 rerun-sdk==0.31.4
 
-# Drift analysis & static figure generation
-# (scripts/v1/analyze_drift.py)
+# Analysis & static figure generation
+# (scripts/v1: drift, scripts/v2: EKF, scripts/v3: planning)
 numpy>=1.26
 pandas>=2.0
 matplotlib>=3.8
