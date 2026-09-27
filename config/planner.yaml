@@ -13,6 +13,7 @@
 #   connectivity      栅格邻接度:4 或 8(8 连通带防穿角)。
 #   allow_unknown     是否允许穿越 unknown cell(保守默认 false)。
 #   cost_weight       代价梯度权重:>0 时等长路径倾向远离障碍;0 为纯最短路。
+# 缺失的字段回退到默认值;未列出的字段(例如拼错的 key)加载即报错,不会被静默忽略。
 
 inflation_radius: 0.05
 heuristic: octile

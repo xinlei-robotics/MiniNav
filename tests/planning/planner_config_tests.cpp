@@ -81,3 +81,13 @@ TEST(PlannerConfig, RejectsManhattanUnlessFourConnected) {
   EXPECT_THROW((void)parse_planner_config("heuristic: manhattan"), std::runtime_error);
   EXPECT_NO_THROW((void)parse_planner_config("heuristic: manhattan\nconnectivity: 4"));
 }
+
+// 拼错的 key 不能被静默忽略(否则会悄悄退回默认值):加载即报错,并点名是哪个 key。
+TEST(PlannerConfig, RejectsUnknownKeyToCatchTypos) {
+  try {
+    (void)parse_planner_config("heuristic: octile\nconectivity: 4");
+    FAIL() << "expected std::runtime_error for the misspelled key";
+  } catch (const std::runtime_error& e) {
+    EXPECT_NE(std::string{e.what()}.find("conectivity"), std::string::npos) << e.what();
+  }
+}
