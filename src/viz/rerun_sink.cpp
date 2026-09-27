@@ -1,11 +1,15 @@
 module;
 
+#include <Eigen/Core>
+
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <rerun.hpp>
 
@@ -189,5 +193,41 @@ namespace mininav
         // 不清历史(历史属于过去的时间戳, 由 viewer 的 time range 决定可见性).
         // 一般在 episode 切换时调用, 配合 set_time 把新 episode 标到新时间起点.
         impl_->stream.log(std::string{trail_path}, rerun::Clear::FLAT);
+    }
+
+    // ----- 静态几何原语 ---------------------------------------------------------
+    void RerunSink::log_points_static(const std::string_view entity_path,
+                                      const std::vector<Eigen::Vector2d>& points,
+                                      const std::array<std::uint8_t, 3> color,
+                                      const float radius)
+    {
+        std::vector<rerun::Position3D> positions;
+        positions.reserve(points.size());
+        for (const Eigen::Vector2d& p : points)
+        {
+            positions.emplace_back(static_cast<float>(p.x()),
+                                   static_cast<float>(p.y()), 0.0F);
+        }
+        const rerun::Color c{color[0], color[1], color[2]};
+        impl_->stream.log_static(
+            std::string{entity_path},
+            rerun::Points3D{positions}.with_colors(c).with_radii(radius));
+    }
+
+    void RerunSink::log_line_strip_static(const std::string_view entity_path,
+                                          const std::vector<Eigen::Vector2d>& points,
+                                          const std::array<std::uint8_t, 3> color)
+    {
+        std::vector<rerun::Vec3D> strip;
+        strip.reserve(points.size());
+        for (const Eigen::Vector2d& p : points)
+        {
+            strip.emplace_back(static_cast<float>(p.x()),
+                               static_cast<float>(p.y()), 0.0F);
+        }
+        const rerun::Color c{color[0], color[1], color[2]};
+        impl_->stream.log_static(
+            std::string{entity_path},
+            rerun::LineStrips3D{rerun::LineStrip3D{strip}}.with_colors(c));
     }
 }

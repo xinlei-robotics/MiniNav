@@ -11,12 +11,14 @@ target_sources(viz
         viz_sink.cpp
         rerun_sink.cpp
         sim_state_log.cpp
+        plan_log.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
         viz_sink.ixx
         rerun_sink.ixx
         sim_state_log.ixx
+        plan_log.ixx
 )
 
 target_link_libraries(viz

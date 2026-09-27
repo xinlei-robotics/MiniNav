@@ -1,6 +1,11 @@
 module;
 
+#include <Eigen/Core>
+
+#include <array>
+#include <cstdint>
 #include <string_view>
+#include <vector>
 
 export module mininav.viz.sink;
 
@@ -41,5 +46,21 @@ export namespace mininav
         virtual void log_trail_point(std::string_view trail_path, double x, double y) = 0;
 
         virtual void clear_trail(std::string_view trail_path) = 0;
+
+        // ---- 静态几何原语(后端无关) -----------------------------------------
+        // 一次性场景(如 V3 的占据栅格 + 规划路径)用 static log:不随时间轴变化,
+        // 在任意时间游标下都可见。color 为 RGB,points 是 world 坐标 (x, y)(z=0)。
+        //
+        // 这两个原语只认 Eigen::Vector2d / 颜色,不认任何 planning 类型 —— viz 因此
+        // 不依赖 planning(见模块依赖图)。把 OccupancyGrid / Path 转成点集是上层
+        // (app)的事;plan_log.ixx 提供一个纯几何的便利封装。
+        virtual void log_points_static(std::string_view entity_path,
+                                       const std::vector<Eigen::Vector2d>& points,
+                                       std::array<std::uint8_t, 3> color,
+                                       float radius) = 0;
+
+        virtual void log_line_strip_static(std::string_view entity_path,
+                                           const std::vector<Eigen::Vector2d>& points,
+                                           std::array<std::uint8_t, 3> color) = 0;
     };
 }

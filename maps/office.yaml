@@ -1,0 +1,8 @@
+# office 地图描述(对齐 ROS map_server 的 image+yaml 约定)。
+# V3 集成演示用的较大地图:两室一门,演示跨房间 A* 规划。
+image: office.pgm          # 同目录灰度图,暗=占据 亮=free
+resolution: 0.05           # 米/cell → 40x30 cell = 2.0x1.5m
+origin: [0.0, 0.0, 0.0]    # 图像左下角对应的 world 坐标 (x, y, yaw);yaw 在 V3 忽略
+occupied_thresh: 0.65      # occ 概率 > 此值 → 占据
+free_thresh: 0.25          # occ 概率 < 此值 → free;之间 → unknown
+negate: 0                  # 是否反色

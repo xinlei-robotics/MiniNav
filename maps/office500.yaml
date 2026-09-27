@@ -1,0 +1,8 @@
+# office500 — 程序化 500x500 楼宇平面(由 scripts/v3/gen_office500.py 生成)。
+# 25x25m,6x6 房间 + 门洞 + 柱子。P5 二进制 PGM。
+image: office500.pgm
+resolution: 0.05
+origin: [0.0, 0.0, 0.0]
+occupied_thresh: 0.65
+free_thresh: 0.25
+negate: 0
