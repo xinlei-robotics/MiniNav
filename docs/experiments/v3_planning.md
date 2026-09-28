@@ -5,7 +5,7 @@
 > ground-truth 的偏差)、以及 A\* 作为纯确定性算法的**逐字节复现性**。
 > 下文所有数字均来自本仓库的 `sim`(规划模式)与 `scripts/v3/`,可用
 > [附录](#附录复现) 中的命令复现。算法与启发式的数学说明见
-> [`docs/v3_plan.md`](../v3_plan.md) §3.6 / §9。
+> [`docs/math/astar_planning.md`](../math/astar_planning.md),工程总结见 [`docs/v3_summary.md`](../v3_summary.md)。
 
 ---
 
@@ -206,14 +206,14 @@ diff a.csv b.csv     # 空 diff ✅
 - **起止落在障碍**:直接判失败,不做就近吸附(留给上层决定如何处理)。
 - **量化零头**:路径首尾 waypoint 是格心,与真实连续起止点有
   ≤ 0.5·resolution·√2 的量化偏差(office 下 ≈ 3.5 cm)。V3 不处理,V4 闭环反馈
-  会吸收(见 [`v3_plan.md`](../v3_plan.md) §10.5)。
+  会吸收(见 [`v3_summary.md`](../v3_summary.md) §8.5)。
 
 ---
 
 ## 7. 结论与去向
 
 - **耗时**:200×200 单次 A\* p95 ≈ 3.9 ms(Release),里程碑 50 ms 有 ~13× 余量;
-  even 25 m×25m 的 500×500 楼宇平面(穿数十门洞)也仅 ~12 ms(§3.1)。
+  即便是 25 m × 25 m 的 500×500 楼宇平面(穿数十门洞)也仅 ~12 ms(§3.1)。
 - **最优性**:手画地图上与 Dijkstra ground-truth 偏差 0 cell,优于 ≤ 1 cell 指标。
 - **确定性**:同输入 `path.csv` 逐字节一致(A\* 无 RNG)。
 - **可视化**:`sim` 规划模式把占据栅格 + 膨胀层 + 路径推到 Rerun,并写 `path.csv`;

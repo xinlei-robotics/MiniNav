@@ -1,7 +1,7 @@
 # planner.yaml — A* 全局规划器配置(对应 mininav::planning::PlannerConfig)。
 #
 # 这些字段从硬编码搬进 YAML,是 V1/V2 推迟、到 V3 才有真实价值的"外部配置层"
-# (见 docs/v3_plan.md §1.1 / §4.3)。CLI flag(--heuristic / --connectivity /
+# (见 docs/v3_summary.md §1.1 / §4.1)。CLI flag(--heuristic / --connectivity /
 # --inflation-radius)可逐项覆盖本文件的取值;地图路径与起止点走 CLI(--map /
 # --start / --goal),不在此文件内 —— 保持本文件 == 纯算法配置。
 #

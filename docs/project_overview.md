@@ -5,9 +5,9 @@
 > 路径规划、跟踪控制、ROS 2 节点化,并最终在 Raspberry Pi 5 + 4WD
 > 小车平台上完成室内自主移动的实车闭环。
 
-> **当前进度(截至 2026-06):V0 / V1 / V2 已完成**,V3(全局路径规划)
+> **当前进度(截至 2026-09):V0 / V1 / V2 / V3 已完成**,V4(控制 + ROS 2)
 > 为下一个里程碑。本文档既是项目总愿景,也是版本路线图——已完成版本
-> (✅)的描述对齐仓库真实状态,未完成版本(V3–V7)是**前瞻规划**,
+> (✅)的描述对齐仓库真实状态,未完成版本(V4–V7)是**前瞻规划**,
 > 其模块名、目录、量化指标均为设计意图,可能随实现调整。
 
 ---
@@ -58,17 +58,18 @@ MiniNav 要回答移动机器人导航领域最核心的三个问题:
 | **GoogleTest**            | 单元测试框架                           | V0(FetchContent)      |
 | **Rerun SDK (C++)**       | 实时 3D/2D 可视化,机器人状态与轨迹流式展示        | V0(FetchContent 混合模式) |
 | **CLI11**                 | 命令行参数解析(`--seed` / `--preset` 等) | V1(FetchContent)      |
-| **yaml-cpp**              | 地图与控制器参数的外部配置文件                  | V3 引入                 |
-| **spdlog**                | 替换 V0 内置 logger,结构化日志            | V3 引入                 |
-| **gmock**                 | viz 等需要 mock 第三方依赖的模块            | V3 引入                 |
+| **yaml-cpp**              | `planner.yaml` / `map.yaml` 等外部配置文件   | V3(FetchContent 混合模式) |
+| **spdlog**                | 替换 V0 内置 logger,分级、带时间戳的日志        | V3(FetchContent 混合模式) |
+| **gmock**                 | `VizSink` 等接口的 mock,viz 层单测         | V3(随 GoogleTest)      |
 | **ROS 2 (Jazzy Jalisco)** | 节点化、topic 通信、RViz2 可视化、launch 系统 | V4 引入                 |
 
-> **当前已集成**:Eigen3、GoogleTest、Rerun SDK、CLI11(V0–V2)。
-> yaml-cpp / spdlog / gmock / ROS 2 是 V3+ 的**规划项,尚未引入**。
+> **当前已集成**:Eigen3、GoogleTest / gmock、Rerun SDK、CLI11、yaml-cpp、
+> spdlog(V0–V3)。ROS 2 是 V4 的**规划项,尚未引入**。
 >
 > **依赖管理策略**:Eigen 用系统包(header-only 共享高效)、GoogleTest
-> 用纯 FetchContent(ABI 风险)、Rerun 与 CLI11 用 `FetchContent` +
-> `FIND_PACKAGE_ARGS` 混合(本机有装走 find、否则 fetch)。不同模式对应
+> 用纯 FetchContent(ABI 风险)、Rerun / CLI11 / yaml-cpp / spdlog 用
+> `FetchContent` + `FIND_PACKAGE_ARGS` 混合(本机有装走 find、否则 fetch)。
+> spdlog 以 PRIVATE 方式链接进 `core`,不向下游暴露任何类型。不同模式对应
 > 不同第三方库的工程形态,没有"银弹策略"。
 
 ### 2.4 辅助工具
@@ -84,22 +85,23 @@ MiniNav 要回答移动机器人导航领域最核心的三个问题:
 MiniNav 的代码组织遵循一组贯穿所有版本的设计原则,它们决定了
 "新增功能时不需要重写旧代码"这一关键性质。
 
-### 3.1 版本化的状态结构 + ADL 自由函数
+### 3.1 Plain-data 状态结构 + ADL 自由函数
 
-每一个版本都有自己的快照结构 `SimStateV0` / `SimStateV1` / ...,
-不追求"一个万能 SimState"。新版本通过**新文件中的重载**扩展功能,
-而不是修改已有版本的代码:
+仿真状态是一个 plain-data 结构 `SimState`(无继承),序列化与可视化
+不写成成员函数,而是**自由函数**,通过 Argument-Dependent Lookup
+(实参依赖查找)在编译期解析:
 
-- 数据结构:`SimStateV0`(t, pose, twist)→ `SimStateV1`(+truth_pose、
-  odom_pose、encoder_ticks)→ `SimStateV2`(+imu_omega、6 维 ekf_mean、
-  6×6 ekf_cov、nis_encoder、nis_imu)
-- 序列化:`csv_row(SimStateV0)` / `csv_row(SimStateV1)` / ... ,
-  通过 Argument-Dependent Lookup(实参依赖查找)在编译期解析
-- 可视化:`log_to_rerun(SimStateV0, ...)` / `log_to_rerun(SimStateV1, ...)`
-  同样通过 ADL 扩展
+- 序列化:`csv_header(SimState)` / `csv_row(SimState)`
+- 可视化:`log_to_rerun(sink, SimState, ...)`
 
-容器层用 `Trajectory<T>` 模板复用——"行为相同、类型不同"用模板,
+要支持一个新的记录类型,只需为它新增一组重载,而不必改动容器或可视化
+后端。容器层用 `Trajectory<T>` 模板复用——"行为相同、类型不同"用模板,
 不用继承。
+
+V0–V2 期间曾经每个版本各有一个快照结构(`SimStateV0` / `V1` / `V2`)并存;
+V2 收尾后改为 tag-based 版本策略,trunk 只保留当前的 `SimState`,历史版本由
+git tag 保存(见 §6)。V3 的规划产出是一次性的,不套 per-step 结构,而是
+独立的 `PlanResult` + `path.csv`。
 
 ### 3.2 依赖倒置:估计器只认接口、不认来源
 
@@ -116,10 +118,14 @@ CMake 层面把这条原则物理化:`mininav_sensors` 与
 
 `viz` 静态库的头文件**不** `#include <rerun.hpp>`,只通过
 `std::unique_ptr<Impl>` 前向声明持有实现。Rerun 的具体类型只出现
-在 `.cpp` 里。下游 target(`sim_v0` / `sim_v1` / 未来的
-`mininav_node`)的编译时间不受 Rerun 头文件大小影响,符号也不被
-污染。这同时保证了"在树莓派上跑无可视化版本"时,核心算法库
-不需要 `#ifdef` 大改。
+在 `.cpp` 里。下游 target(`sim` / 未来的 ROS 2 节点)的编译时间不受
+Rerun 头文件大小影响,符号也不被污染。这同时保证了"在树莓派上跑无
+可视化版本"时,核心算法库不需要 `#ifdef` 大改。
+
+V3 在 PIMPL 之上又加了一层**接口隔离**:可视化逻辑只依赖抽象的
+`VizSink`,`RerunSink` 是它唯一的 Rerun 实现。测试里用 gmock 的
+`MockVizSink` 断言实体路径与调用契约,不起 Viewer——"能 mock"本身就
+证明了依赖被隔离干净。
 
 ### 3.4 双轨产出:CSV(确定性)与 Rerun(交互式)共存
 
@@ -201,16 +207,22 @@ Layer 2 在 CMake 层面物化为**两个互不依赖**的静态库
   update_imu`;编码器与陀螺都作为**对隐状态的观测**(而非控制输入),
   Joseph-form 协方差更新,解析 Jacobian 经有限差分校验。
 
-### Layer 3 — 全局路径规划
+### Layer 3 — 全局路径规划(V3 引入)
 
-- **地图表示**:二维 occupancy grid,支持从 PGM/PNG 加载
-- **算法**:A\* 搜索,曼哈顿与欧几里得启发式
-- **膨胀层**:障碍物膨胀保证路径安全距离
+Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-cpp,
+与 `sensors` / `localization` 没有编译期依赖:`OccupancyGrid` 进、`Path` 出。
+
+- **地图表示**:二维 occupancy grid(free / occupied / unknown 三值),从 ROS
+  `map_server` 风格的 PGM(P2/P5)+ `map.yaml` 加载;origin 取左下角,越界视为占据
+- **膨胀层**:多源欧氏距离变换 + 按半径膨胀,把机器人缩成配置空间里的一个点;
+  同一张距离场还驱动可选的代价梯度(让路径远离障碍)
+- **算法**:A\* 搜索,4/8 连通,Manhattan / Euclidean / Octile 启发式,8 连通防穿角;
+  启发式与连通度的组合必须 admissible(Manhattan + 8 连通会被拒绝)
 - **接口风格**:`GlobalPlanner` 类的签名提前对齐
   `nav2_core::GlobalPlanner` 的形态(不依赖 ROS 消息类型,使用项目
   自己的 `Path` 类型),V4 引入 ROS 2 时只需要薄薄一层适配器
-- **配置**:V3 同步引入 yaml-cpp,地图路径、膨胀半径、启发式选择
-  等参数从 YAML 加载
+- **配置**:yaml-cpp 读 `config/planner.yaml`(膨胀半径、启发式、连通度等),
+  CLI 可逐项覆盖;规划入口是 `sim --map`
 
 ### Layer 4 — 路径跟踪控制
 
@@ -238,58 +250,61 @@ Layer 2 在 CMake 层面物化为**两个互不依赖**的静态库
 
 ## 5. 目录结构
 
-下面是**当前真实结构**(截至 V2)。标注 `(规划)` 的条目尚不存在,
-是 V3+ 的设计意图。
+下面是**当前真实结构**(截至 V3)。标注 `(规划)` 的条目尚不存在,
+是 V4+ 的设计意图。
 
 ```
 mininav/
 ├── CMakeLists.txt
 ├── CMakePresets.json
-├── README.md  CHANGELOG.md  CONTRIBUTING.md  AGENTS.md  CLAUDE.md
-├── compile_commands.json
+├── README.md  CHANGELOG.md  CONTRIBUTING.md
 ├── requirements.txt                # Python 依赖(rerun-sdk 等)
 ├── cmake/
 │   ├── warnings.cmake              # 严格警告策略(INTERFACE lib)
-│   ├── google_test.cmake           # GoogleTest 引入
+│   ├── google_test.cmake           # GoogleTest(含 gmock)引入
 │   ├── rerun.cmake                 # Rerun SDK 混合模式引入
-│   └── cli11.cmake                 # CLI11 引入
+│   ├── cli11.cmake                 # CLI11 引入
+│   ├── yaml_cpp.cmake              # yaml-cpp 混合模式引入(V3)
+│   └── spdlog.cmake                # spdlog 混合模式引入(V3)
 ├── .github/workflows/ci.yml        # GitHub Actions 工作流
-├── config/                         # 空占位,YAML 参数配置 (规划, V3 起)
-├── data/                           # 仿真输出:traj.csv / traj_v1.csv / traj_v2*.csv
+├── config/
+│   └── planner.yaml                # A* 规划器配置(V3)
+├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)
+├── data/                           # 运行产出(不入库):traj.csv / path.csv
 ├── docs/
-│   ├── project-overview.md         # 本文档:项目总愿景与版本路线
-│   ├── project-management.md       # issue / 看板 / milestone 约定
+│   ├── project_overview.md         # 本文档:项目总愿景与版本路线
+│   ├── project_management.md       # issue / 看板 / milestone 约定
 │   ├── v0_summary.md               # 各版本阶段性总结
 │   ├── v1_summary.md
 │   ├── v2_summary.md
+│   ├── v3_summary.md
 │   ├── math/
 │   │   ├── odom_noise.md           # Velocity Motion Model + 编码器物理/量化 (V1)
 │   │   ├── EKF_Foundations.md      # EKF 预测/更新、Jacobian、Joseph form (V2)
-│   │   └── runge_kutta_integration.md  # RK4 过程积分及其解析 Jacobian (V2)
+│   │   ├── runge_kutta_integration.md  # RK4 过程积分及其解析 Jacobian (V2)
+│   │   └── astar_planning.md       # 栅格、膨胀、A* 最优性、启发式可采纳性 (V3)
 │   └── experiments/
-│       └── v2_ekf_fusion.md        # 20-seed EKF-vs-odom 定量报告 (V2)
+│       ├── v2_ekf_fusion.md        # 20-seed EKF-vs-odom 定量报告 (V2)
+│       └── v3_planning.md          # 规划耗时 / 最优性 / 确定性报告 (V3)
 ├── scripts/                        # Python 后处理(按版本组织)
 │   ├── plot_trajectory.py          # V0 出图
 │   ├── v1/analyze_drift.py         # V1 漂移分析
-│   └── v2/                         # V2 EKF 分析
-│       ├── analyze_ekf.py          #   三轨迹 / RMSE / NIS / 3σ / bias
-│       ├── analyze_covariance.py   #   协方差椭圆演化 + 动画
-│       ├── analyze_integrator.py   #   RK4-vs-Euler 单 seed 对
-│       └── sweep_integrator.py     #   RK4-vs-Euler 多 seed 平均
-├── results/                        # 实验产出:results/v{0,1,2}/ 下的 PNG / GIF
+│   ├── v2/                         # V2 EKF 分析(analyze_ekf / covariance / integrator / sweep)
+│   └── v3/                         # V3 规划:plot_plan / benchmark_planner / optimality_check /
+│                                   #   animate_search / gen_office500 / _mapio
+├── results/                        # 实验产出:results/v{0,1,2,3}/ 下的 PNG / GIF
 ├── src/
-│   ├── core/                       # 运动学、类型、Trajectory、CSV、随机数、积分器
-│   │   ├── types.{ixx,cpp}         # Pose2D / Twist2D / EncoderTicks / SimStateV{0,1,2}
+│   ├── core/                       # 运动学、类型、Trajectory、CSV、随机数、积分器、日志
+│   │   ├── types.{ixx,cpp}         # Pose2D / Twist2D / EncoderTicks / SimState
 │   │   ├── math.ixx                # wrap_angle, kPi
 │   │   ├── kinematics.{ixx,cpp}    # differential_drive_step + inverse/forward
 │   │   ├── integrators.{ixx,cpp}   # rk4_step(V2 引入,真值与 EKF 共用)
-│   │   ├── robot_model.{ixx,cpp}
 │   │   ├── command_source.ixx + staged_command_source.cpp
 │   │   ├── trajectory.ixx          # Trajectory<T> 模板
 │   │   ├── csv_format.{ixx,cpp}    # csv_header / csv_row 重载
 │   │   ├── csv_writer.ixx          # write_csv<T> 模板
 │   │   ├── random.ixx              # RngFactory + FNV-1a tag 派生
-│   │   └── logger.ixx              # (规划) V3 替换为 spdlog 封装
+│   │   └── logger.{ixx,cpp}        # 日志接口;V3 起后端为 spdlog(PRIVATE)
 │   ├── sensors/                    # 独立静态库:执行 + 观测噪声模型
 │   │   ├── actuator_model.{ixx,cpp}
 │   │   ├── wheel_encoder.{ixx,cpp}
@@ -299,20 +314,27 @@ mininav/
 │   │   ├── ekf_state.ixx           # V2:Vec6/Mat6、StateIdx、EkfState6
 │   │   ├── ekf.{ixx,cpp}           # V2:6D EKF(predict + encoder/imu update)
 │   │   └── encoder_observation.{ixx,cpp}  # V2:解码 z 与推导 R
-│   ├── viz/                        # PIMPL 隔离 Rerun
-│   │   ├── rerun_sink.{ixx,cpp}
-│   │   └── sim_state_log.{ixx,cpp} # log_to_rerun(SimStateV{0,1,2}, ...)
-│   ├── apps/                       # 可执行入口(各版本并存,作为回归基线)
-│   │   ├── sim_v0_main.cpp
-│   │   ├── sim_v1_main.cpp
-│   │   └── sim_v2_main.cpp
-│   ├── planning/                   # (规划) V3:occupancy_grid + astar
+│   ├── planning/                   # 独立静态库(V3):只依赖 core + yaml-cpp
+│   │   ├── grid_types.{ixx,cpp}    # GridCoord / Path / PlannerConfig / is_admissible
+│   │   ├── planner_config.{ixx,cpp}  # planner.yaml 解析 / 序列化
+│   │   ├── occupancy_grid.{ixx,cpp}  # OccupancyGrid + world/grid 变换
+│   │   ├── map_io.{ixx,cpp}        # PGM(P2/P5)+ map.yaml 加载
+│   │   ├── inflation.{ixx,cpp}     # 欧氏距离变换 + 膨胀
+│   │   └── astar.{ixx,cpp}         # GlobalPlanner / AStarPlanner / PlanResult
+│   ├── viz/                        # 接口 + PIMPL 隔离 Rerun
+│   │   ├── viz_sink.{ixx,cpp}      # VizSink 抽象接口(V3)
+│   │   ├── rerun_sink.{ixx,cpp}    # RerunSink : VizSink
+│   │   ├── sim_state_log.{ixx,cpp} # log_to_rerun(SimState, ...)
+│   │   └── plan_log.{ixx,cpp}      # PlanScene + log_plan(V3)
+│   ├── apps/
+│   │   └── sim_main.cpp            # 单一 sim:EKF 仿真 + --map 规划模式
 │   └── control/                    # (规划) V4:pure_pursuit
 ├── tests/                          # GoogleTest,按子库组织
-│   ├── core/                       # math / kinematics / robot_model / trajectory / types / random
+│   ├── core/                       # math / kinematics / trajectory / types / random
 │   ├── sensors/                    # actuator / wheel_encoder / imu_model
 │   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation
-│   ├── planning/                   # (规划) V3
+│   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config
+│   ├── viz/                        # gmock:viz_sink_log_tests
 │   └── control/                    # (规划) V4
 └── ros2_ws/                        # (规划) V4:ROS 2 工作空间
     └── src/  ├ mininav_msgs ├ mininav_sim ├ mininav_localization
@@ -323,8 +345,11 @@ mininav/
 
 ## 6. 版本路线图
 
-每个版本都是一次完整迭代,而不是推倒重来。版本之间向后兼容,
-早期版本的可执行档作为回归基线持续保留。
+每个版本都是一次完整迭代,而不是推倒重来。V0–V2 期间,各版本的可执行档
+曾经并存,作为回归基线;V2 收尾后改为 **tag-based 版本策略**:`main` 只保留
+当前最佳设计(单一 `sim`),每个完成的里程碑由 git tag + GitHub Release +
+`docs/` 回顾文档保存(`v0.1.0`=V0 … `v0.4.0`=V3),回归保护靠测试与确定性输出。
+下文各版本的"交付"一栏记录的是**当时**的产物。
 
 ### V0 — 理想运动仿真 ✅
 
@@ -372,19 +397,25 @@ mininav/
   `docs/math/EKF_Foundations.md` + `docs/math/runge_kutta_integration.md`、
   `docs/v2_summary.md`
 
-### V3 — 全局路径规划
+### V3 — 全局路径规划 ✅
 
-- **目标**:从 PGM/PNG 加载二维占据栅格地图,实现 A\* 全局规划与
-  障碍物膨胀。引入 yaml-cpp 承载地图与规划器配置。
-- **关键模块**:`OccupancyGrid`(PGM/PNG IO + 膨胀)、`AStar`
-  (曼哈顿/欧几里得启发式)、`GlobalPlanner` 接口(签名提前对齐
-  `nav2_core::GlobalPlanner`)、YAML 配置加载
-- **工程升级**:同期引入 spdlog 替换 V0 内置 logger;引入 gmock,
-  补 viz 模块的测试覆盖
-- **量化指标**:典型 200×200 地图规划时间 ≤ 50 ms;在手画测试
-  地图集合上,A\* 输出路径长度与已知最短路偏差 ≤ 1 个 cell
-- **交付**:`sim_v3` 可执行档、规划路径 Rerun 可视化、手画/真实
-  地图实验集、`docs/experiments/v3_planning.md`
+- **目标**:从 PGM + `map.yaml` 加载二维占据栅格地图,实现障碍物膨胀与 A\*
+  全局规划。引入 yaml-cpp 承载规划器配置。
+- **关键模块**:新增静态库 `planning`——`OccupancyGrid`(PGM P2/P5 加载)、
+  欧氏距离变换膨胀、`AStarPlanner`(4/8 连通,Manhattan / Euclidean / Octile
+  启发式,防穿角,可选代价梯度)、`GlobalPlanner` 接口(签名对齐
+  `nav2_core::GlobalPlanner`)、`planner.yaml` 加载;`viz` 新增 `PlanScene` /
+  `log_plan`
+- **工程升级**:spdlog 替换 V0 内置 logger(接口不变);抽出 `VizSink` 接口,
+  用 gmock 补上 viz 模块的测试覆盖
+- **量化指标**:200×200 地图单次规划 p95 **3.94 ms**(目标 ≤ 50 ms);手画测试
+  地图上与 Dijkstra 最短路偏差 **0 cell**(目标 ≤ 1 cell);同输入 `path.csv`
+  逐字节一致。**关键发现**:最优性保证依赖启发式与连通度的搭配——Manhattan
+  在 8 连通下高估对角步,悄无声息地超标 1.13 cell,因此被配置层直接拒绝
+- **交付**:`sim --map` 规划模式(演进单一 `sim`,不再另起 `sim_v3`)、Rerun
+  规划视图、`path.csv`、手画 + 程序生成的地图集、`scripts/v3/` 与搜索过程动画、
+  `docs/experiments/v3_planning.md`、`docs/math/astar_planning.md`、
+  `docs/v3_summary.md`
 
 ### V4 — 控制 + ROS 2 节点化
 
@@ -450,8 +481,9 @@ MiniNav 的可视化分为三层,每一层有不同的**读者**和**职责**:
 ### 7.1 Rerun 的角色
 
 Rerun 是项目的**开发期日常工作面**。机器人主循环每一步通过 ADL
-自由函数 `log_to_rerun(SimStateVN, ...)` 把状态推到 Rerun 后端,
-Viewer 实时渲染 3D/2D 视图与时间序列,支持暂停、回放、倒带。
+自由函数 `log_to_rerun(sink, SimState, ...)` 把状态推到可视化后端,
+Viewer 实时渲染 3D/2D 视图与时间序列,支持暂停、回放、倒带;规划模式则把
+整个场景一次性以 static 数据推送(`log_plan`)。
 
 各版本 Rerun 视图内容:
 
@@ -460,7 +492,7 @@ Viewer 实时渲染 3D/2D 视图与时间序列,支持暂停、回放、倒带�
 | V0 | 机器人位姿、轨迹、控制输入时间序列                                                                                                                        |
 | V1 | **三轨迹**:cmd_traj(完美执行)/ truth(actuator 噪声后)/ odom(编码器全链路)<br/>诊断时序:cmd_v/w、true_velocity_v/w、encoder_dticks_l/r、error/position、error/yaw |
 | V2 | 在三轨迹上叠加 `ekf` 估计轨迹;`bias_omega` 学习曲线(估计 vs 真值)实时收敛演示;协方差椭圆演化由 Python 脚本离线出图                                                              |
-| V3 | occupancy grid 地图 + A\* 搜索展开过程 + 规划路径                                                                                                    |
+| V3 | 占据栅格 + 膨胀安全裕度 + A\* 规划路径 + 起止位姿(static);A\* 搜索展开过程由 `scripts/v3/animate_search.py` 离线渲染成动画                                         |
 | V4 | 完整导航过程:地图 + 路径 + 机器人轨迹 + look-ahead 点                                                                                                    |
 | V5 | ROS 2 topic 直接接入 Rerun(或并行接 RViz2)                                                                                                       |
 | V6 | 实车实时可视化(Pi 端流到 PC 端 Rerun)                                                                                                               |
@@ -472,11 +504,14 @@ Python 脚本从 CSV 出 PNG/PDF/GIF。`.rrd` 是二进制格式不可 diff、
 产出落在 `results/v{N}/`:V1 的 `scripts/v1/analyze_drift.py` 出
 `trajectory.png` 与 `drift_over_time.png`;V2 的 `scripts/v2/` 出三轨迹、
 累积 RMSE、NIS 一致性、3σ 状态误差、bias 学习曲线与协方差椭圆演化(含
-`covariance_evolution.gif`)。
+`covariance_evolution.gif`);V3 的 `scripts/v3/` 出规划总览图
+`plan_<map>.png`、耗时基准、最优性对比与 A\* 搜索动画 `search_<map>.gif`
+(文件名随地图,多张地图的产出互不覆盖)。
 
 ### 7.3 MP4 / GIF 的角色
 
-V5 完整闭环 demo 与 V6 实车视频是 README 首屏与外部分享素材。
+V3 的 A\* 搜索动画(`search_office500.gif`)目前是 README 首屏;V5 完整
+闭环 demo 与 V6 实车视频将是之后的首屏与外部分享素材。
 Rerun 录屏 + ffmpeg 转 GIF 是标准生成路径。简历 PDF 无法嵌入
 GIF,但 GitHub README 与 LinkedIn 帖子可以。
 
@@ -498,17 +533,18 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 ### 8.1 单元测试(GoogleTest)
 
 每个静态库对应一个测试可执行档(`core_tests` / `sensors_tests` /
-`localization_tests` / `planning_tests` / `control_tests`),
-通过 `gtest_discover_tests` 自动注册到 CTest,支持 `ctest -R`
-精细化筛选。
+`localization_tests` / `planning_tests` / `viz_tests`,V4 起加
+`control_tests`),通过 `gtest_discover_tests` 自动注册到 CTest,并按库打
+标签(`ctest -L planning`),支持 `ctest -R` 精细化筛选。
 
-| 库              | 覆盖重点                                                       |
-|----------------|------------------------------------------------------------|
-| `core`         | 运动学积分、`wrap_angle` 边界、`Trajectory` 容器、RngFactory tag 派生稳定性 |
-| `sensors`      | ActuatorModel σ=0 时跳过 RNG、WheelEncoder 累计-差分语义、低速量化欠采样     |
-| `localization` | WheelOdometry 纯函数性、EKF predict/update、**雅可比有限差分数值验证**(V2)  |
-| `planning`     | A\* 最短路正确性、不可达检测、膨胀正确性(V3)                                 |
-| `control`      | Pure Pursuit 在直线/圆弧上的输出合理性(V4)                             |
+| 库              | 覆盖重点                                                                     |
+|----------------|--------------------------------------------------------------------------|
+| `core`         | 运动学积分、`wrap_angle` 边界、`Trajectory` 容器、RngFactory tag 派生稳定性               |
+| `sensors`      | ActuatorModel σ=0 时跳过 RNG、WheelEncoder 累计-差分语义、低速量化欠采样                   |
+| `localization` | WheelOdometry 纯函数性、EKF predict/update、**雅可比有限差分数值验证**(V2)                |
+| `planning`     | 坐标往返、PGM 加载与 y 翻转、欧氏膨胀、A\* 精确最优长度、不可达检测、启发式可采纳性拒绝、200×200 压力图与耗时(V3) |
+| `viz`          | gmock 断言可视化下沉的实体路径与调用契约,不起 Viewer(V3)                                   |
+| `control`      | Pure Pursuit 在直线/圆弧上的输出合理性(V4)                                           |
 
 ### 8.2 CSV 回归 diff
 
@@ -529,9 +565,10 @@ V4 引入 ROS 2 后,通过 `colcon test` 跑节点级集成测试:
 
 ### 8.5 持续集成
 
-GitHub Actions 已激活,矩阵为 `ubuntu-24.04 + clang-18`,每次
-push 自动构建 + 跑所有单元测试 + CSV 回归 diff。V4 之后加入
-ROS 2 节点的 colcon test。
+GitHub Actions 已激活,环境为 `ubuntu-24.04 + clang-18`,每个 PR 与
+push 到 `main` 时以 Debug preset 构建并跑全部单元测试。CSV 回归 diff 目前
+在本地手动执行,尚未进 CI;只在 Release 下有意义的断言(如 A\* 的 50 ms
+耗时预算)在 CI 中显示为 Skipped。V4 之后加入 ROS 2 节点的 colcon test。
 
 ---
 
@@ -565,23 +602,26 @@ C++ 负责**系统跑起来**,Python 负责**实验讲清楚**。
 | `odom_noise.md`              | Velocity Motion Model 四参数推导、编码器物理模型、量化误差分析 | V1 |
 | `EKF_Foundations.md`         | EKF 预测/更新方程、雅可比手推与有限差分验证、Joseph form       | V2 |
 | `runge_kutta_integration.md` | RK4 过程积分及其解析 Jacobian                      | V2 |
+| `astar_planning.md`          | 占据栅格与配置空间膨胀、A\* 最优性证明、启发式在 4/8 连通下的可采纳性与一致性 | V3 |
 
-> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`);V3+ 的规划 /
-> 控制推导待对应版本补齐。
+> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`);V4+ 的控制推导待
+> 对应版本补齐。
 
 **实验报告**(`docs/experiments/`):每个版本结束时一篇,说清楚"问题→
-方案→坑→结果",含图、数据、结论。已有 `v2_ekf_fusion.md`(V2)。
+方案→坑→结果",含图、数据、结论。已有 `v2_ekf_fusion.md`(V2)、
+`v3_planning.md`(V3)。
 
 **版本总结**(`docs/vN_summary.md`):每个版本一篇阶段性总结,记录架构、
-关键设计决策、踩坑实录、与下一个版本的衔接。已有 `v0`/`v1`/`v2`。
+关键设计决策、踩坑实录、与下一个版本的衔接。已有 `v0`/`v1`/`v2`/`v3`。
 
-**项目管理**(`docs/project-management.md`):issue 模板、看板列、
+**项目管理**(`docs/project_management.md`):issue 模板、看板列、
 milestone 与发布约定。
 
 ### 10.3 视觉资产
 
 - V0-V2:Rerun 录屏 + Python PNG(三轨迹对比、漂移曲线、协方差椭圆)
 - V2:EKF RMSE 表格
+- V3:A\* 搜索过程动画(500×500 楼宇平面)、规划总览图、耗时与最优性图表
 - V5:**完整仿真导航 MP4 + GIF**(README 首屏)
 - V6:**实车导航视频**+ **sim-to-real gap 表格**
 
@@ -594,7 +634,7 @@ milestone 与发布约定。
 | V0 | 单元测试 100% 通过,CSV 跨启动方式字节一致                                          |
 | V1 | `default` preset 20s 位置漂移 0.2-0.6 m,seed 复现性 byte-exact             |
 | V2 | 融合增益档位相关(low-noise position RMSE −48.9%),雅可比有限差分双路径校验;bias 估计工作域已量化 |
-| V3 | 200×200 地图 A\* 规划 ≤ 50 ms,路径长度偏差 ≤ 1 cell                           |
+| V3 | 200×200 地图 A\* 规划 ≤ 50 ms(实测 p95 3.94 ms),路径长度偏差 ≤ 1 cell(实测 0 cell) |
 | V4 | Pure Pursuit 跟踪误差均值 ≤ 10 cm、峰值 ≤ 30 cm                              |
 | V5 | 5 个测试场景到达成功率 ≥ 80%,端到端时延 ≤ 100 ms                                   |
 | V6 | sim-to-real gap 表(每个参数仿真 vs 实测),轨迹 Hausdorff 距离量化                   |
@@ -608,7 +648,7 @@ milestone 与发布约定。
 | **完整**   | 不是单点算法,而是从仿真到实车的完整导航系统                                                   |
 | **可解释**  | 每一层都有数学推导、设计文档与实验验证                                                      |
 | **可量化**  | 每个版本都有显式量化指标,有图、有 RMSE、有参数扫描、有 sim-to-real gap                           |
-| **可扩展**  | 从 V0 到 V6 的每一步都是向前兼容的迭代,而非重写;早期可执行档作为回归基线持续保留                            |
+| **可扩展**  | 从 V0 到 V6 的每一步都是向前兼容的迭代,而非重写;每个里程碑由 git tag 完整保存,trunk 只保留当前最佳设计             |
 | **工程味重** | 现代 C++(modules、ADL 扩展点、PIMPL)、CMakePresets、GoogleTest、CI、ROS 2、Rerun 全家桶 |
 | **有实车**  | Raspberry Pi 5 + 4WD(替换带编码器电机 + BNO055 IMU)真实部署,含 sim-to-real 叙事         |
 
