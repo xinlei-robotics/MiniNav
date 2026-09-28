@@ -30,11 +30,11 @@ add_subdirectory(src/localization)
 add_subdirectory(src/planning)
 
 # ------------------------------------------------------------------
-# 目标: sim (唯一的仿真可执行档)
+# 目标: sim
 # ------------------------------------------------------------------
 add_executable(sim src/apps/sim_main.cpp)
 
-target_link_libraries(sim PRIVATE core viz sensors localization CLI11::CLI11)
+target_link_libraries(sim PRIVATE core viz sensors localization planning CLI11::CLI11)
 
 target_compile_definitions(sim PRIVATE
         PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"

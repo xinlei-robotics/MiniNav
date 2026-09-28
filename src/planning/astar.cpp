@@ -10,6 +10,7 @@ module;
 #include <limits>
 #include <numbers>
 #include <queue>
+#include <stdexcept>
 #include <vector>
 
 module mininav.planning.astar;
@@ -103,6 +104,16 @@ namespace mininav::planning
     AStarPlanner::AStarPlanner(OccupancyGrid grid, PlannerConfig cfg)
         : grid_{inflate(grid, cfg.inflation_radius)}, cfg_{cfg}
     {
+        // 不 admissible 的组合会悄悄丢掉最优性(见 is_admissible):构造期直接拒绝,
+        // 而不是返回一条看似正常的次优路径。
+        if (!is_admissible(cfg_.heuristic, cfg_.connectivity))
+        {
+            throw std::invalid_argument(
+                "AStarPlanner: the Manhattan heuristic is inadmissible under 8-connectivity "
+                "(a diagonal step costs sqrt(2) but Manhattan counts 2); "
+                "use octile or euclidean, or 4-connectivity");
+        }
+
         if (cfg_.cost_weight > 0.0)
         {
             cost_ = compute_gradient_cost(grid_);

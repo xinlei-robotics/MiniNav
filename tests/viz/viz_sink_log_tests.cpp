@@ -10,15 +10,22 @@
 import mininav.core.types;
 import mininav.viz.sink;
 import mininav.viz.sim_state_log;
+import mininav.viz.plan_log;
+
+#include <Eigen/Core>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstdint>
 #include <string_view>
+#include <vector>
 
 namespace {
 
 using ::testing::_;
+using ::testing::AnyNumber;
 using ::testing::DoubleEq;
 using ::testing::Eq;
 using ::testing::FloatEq;
@@ -41,6 +48,14 @@ public:
     MOCK_METHOD(void, log_trail_point, (std::string_view, double, double),
                 (override));
     MOCK_METHOD(void, clear_trail, (std::string_view), (override));
+    MOCK_METHOD(void, log_points_static,
+                (std::string_view, (const std::vector<Eigen::Vector2d>&),
+                 (std::array<std::uint8_t, 3>), float),
+                (override));
+    MOCK_METHOD(void, log_line_strip_static,
+                (std::string_view, (const std::vector<Eigen::Vector2d>&),
+                 (std::array<std::uint8_t, 3>)),
+                (override));
 };
 
 // 把字符串字面量显式包成 string_view 匹配器,匹配 string_view 形参。
@@ -104,6 +119,50 @@ TEST(VizSinkLog, LogToRerunComputesOdomDriftDiagnostics) {
     EXPECT_CALL(mock, log_scalar(path("/world/robot/error/yaw"), DoubleEq(0.5)));
 
     log_to_rerun(mock, state, "/world/robot");
+}
+
+// ---------------------------------------------------------------------------
+// log_plan(PlanScene):V3 规划场景的可视化下沉契约。
+//   验证占据 / 膨胀 / 路径折线 + waypoint / 起止 pose 各通道按约定实体路径下沉,
+//   且不依赖任何 planning 类型(PlanScene 只含 Eigen::Vector2d / Pose2D)。
+// ---------------------------------------------------------------------------
+TEST(VizPlanLog, LogPlanRoutesSceneChannelsToExpectedEntities) {
+    NiceMock<MockVizSink> mock;
+
+    mininav::PlanScene scene;
+    scene.obstacle_cells = {{0.0, 0.0}, {1.0, 0.0}};
+    scene.inflated_cells = {{0.5, 0.5}};
+    scene.path = {{0.0, 0.0}, {1.0, 1.0}};
+    scene.start = Pose2D{0.0, 0.0, 0.0};
+    scene.goal = Pose2D{1.0, 1.0, 0.0};
+    // expansion 留空 —— 该通道应被跳过(下面 Times(0) 显式锁住不画)。
+
+    EXPECT_CALL(mock, log_points_static(path("/p/plan/expansion"), _, _, _)).Times(0);
+    EXPECT_CALL(mock, log_points_static(path("/p/map"), _, _, _));
+    EXPECT_CALL(mock, log_points_static(path("/p/map/inflated"), _, _, _));
+    EXPECT_CALL(mock, log_points_static(path("/p/plan/path/waypoints"), _, _, _));
+
+    EXPECT_CALL(mock, log_line_strip_static(path("/p/plan/path"), _, _));
+
+    EXPECT_CALL(mock, log_pose(path("/p/robot/start"), _));
+    EXPECT_CALL(mock, log_pose(path("/p/robot/goal"), _));
+
+    log_plan(mock, scene, "/p");
+}
+
+// expansion 非空时,应额外画出扩展通道。
+TEST(VizPlanLog, LogPlanDrawsExpansionWhenProvided) {
+    NiceMock<MockVizSink> mock;
+
+    mininav::PlanScene scene;
+    scene.path = {{0.0, 0.0}, {1.0, 0.0}};
+    scene.expansion = {{0.0, 0.0}, {0.5, 0.0}, {1.0, 0.0}};
+
+    // 其余 log_points_static 通道(map/inflated/waypoints)放行,只断言 expansion 被画。
+    EXPECT_CALL(mock, log_points_static(_, _, _, _)).Times(AnyNumber());
+    EXPECT_CALL(mock, log_points_static(path("/p/plan/expansion"), _, _, _));
+
+    log_plan(mock, scene, "/p");
 }
 
 }  // namespace

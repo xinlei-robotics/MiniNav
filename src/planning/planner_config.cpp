@@ -2,6 +2,8 @@ module;
 
 #include <yaml-cpp/yaml.h>
 
+#include <algorithm>
+#include <array>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -61,8 +63,39 @@ namespace mininav::planning
             }
         }
 
+        // planner.yaml 的全部合法字段。拼错的 key(如 `heurstic`)若被静默忽略,就会
+        // 悄悄退回默认值 —— 所以未知 key 一律在加载时报错。map.yaml 不做这项检查:
+        // ROS map_server 的地图文件可能带 `mode` 等本项目不用的字段。
+        constexpr std::array<std::string_view, 5> kKnownKeys{
+            "inflation_radius", "heuristic", "connectivity", "allow_unknown", "cost_weight"};
+
+        void reject_unknown_keys(const YAML::Node& node)
+        {
+            if (!node.IsDefined() || node.IsNull())
+            {
+                return; // 空文件:全部字段取默认值
+            }
+            if (!node.IsMap())
+            {
+                throw std::runtime_error("planner_config: expected a YAML mapping of planner fields");
+            }
+            for (const auto& entry : node)
+            {
+                const std::string key = entry.first.as<std::string>();
+                if (std::find(kKnownKeys.begin(), kKnownKeys.end(), key) == kKnownKeys.end())
+                {
+                    throw std::runtime_error(
+                        "planner_config: unknown key '" + key +
+                        "' (expected inflation_radius, heuristic, connectivity, allow_unknown, "
+                        "cost_weight)");
+                }
+            }
+        }
+
         [[nodiscard]] PlannerConfig from_node(const YAML::Node& node)
         {
+            reject_unknown_keys(node);
+
             PlannerConfig cfg{};
             if (node["inflation_radius"])
             {
@@ -83,6 +116,15 @@ namespace mininav::planning
             if (node["cost_weight"])
             {
                 cfg.cost_weight = node["cost_weight"].as<double>();
+            }
+            // 组合校验放在全部字段解析之后:connectivity 缺省为 8,所以单写
+            // `heuristic: manhattan` 同样会被拒绝。
+            if (!is_admissible(cfg.heuristic, cfg.connectivity))
+            {
+                throw std::runtime_error(
+                    "planner_config: heuristic 'manhattan' is inadmissible with connectivity 8 "
+                    "(a diagonal step costs sqrt(2) but Manhattan counts 2); "
+                    "use 'octile' or 'euclidean', or set connectivity: 4");
             }
             return cfg;
         }

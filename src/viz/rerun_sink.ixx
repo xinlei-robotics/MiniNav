@@ -1,8 +1,13 @@
 module;
 
+#include <Eigen/Core>
+
+#include <array>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string_view>
+#include <vector>
 
 export module mininav.viz.rerun_sink;
 
@@ -41,6 +46,16 @@ export namespace mininav
         void log_trail_point(std::string_view trail_path, double x, double y) override;
 
         void clear_trail(std::string_view trail_path) override;
+
+        // ---- 静态几何原语 ----
+        void log_points_static(std::string_view entity_path,
+                               const std::vector<Eigen::Vector2d>& points,
+                               std::array<std::uint8_t, 3> color,
+                               float radius) override;
+
+        void log_line_strip_static(std::string_view entity_path,
+                                   const std::vector<Eigen::Vector2d>& points,
+                                   std::array<std::uint8_t, 3> color) override;
 
     private:
         struct Impl;

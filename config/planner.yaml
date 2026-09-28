@@ -1,0 +1,22 @@
+# planner.yaml — A* 全局规划器配置(对应 mininav::planning::PlannerConfig)。
+#
+# 这些字段从硬编码搬进 YAML,是 V1/V2 推迟、到 V3 才有真实价值的"外部配置层"
+# (见 docs/v3_plan.md §1.1 / §4.3)。CLI flag(--heuristic / --connectivity /
+# --inflation-radius)可逐项覆盖本文件的取值;地图路径与起止点走 CLI(--map /
+# --start / --goal),不在此文件内 —— 保持本文件 == 纯算法配置。
+#
+# 字段语义:
+#   inflation_radius  障碍物膨胀半径(米)= 机器人半径 + 安全裕度。
+#   heuristic         A* 启发式:manhattan / euclidean / octile。euclidean / octile
+#                     在 4、8 连通下都 admissible;manhattan 只在 4 连通下 admissible
+#                     (8 连通下高估对角步,会丢掉最优性),与 8 连通搭配时加载即报错。
+#   connectivity      栅格邻接度:4 或 8(8 连通带防穿角)。
+#   allow_unknown     是否允许穿越 unknown cell(保守默认 false)。
+#   cost_weight       代价梯度权重:>0 时等长路径倾向远离障碍;0 为纯最短路。
+# 缺失的字段回退到默认值;未列出的字段(例如拼错的 key)加载即报错,不会被静默忽略。
+
+inflation_radius: 0.05
+heuristic: octile
+connectivity: 8
+allow_unknown: false
+cost_weight: 0.0
