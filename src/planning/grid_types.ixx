@@ -1,11 +1,4 @@
-module;
-
-#include <cstddef>
-#include <vector>
-
 export module mininav.planning.grid_types;
-
-import mininav.core.types;
 
 export namespace mininav::planning
 {
@@ -54,22 +47,6 @@ export namespace mininav::planning
     {
         return !(h == Heuristic::Manhattan && c == Connectivity::Eight);
     }
-
-    // ---------------------------------------------------------------------------
-    // Path: 几何路径 = world 坐标的 waypoint 序列。
-    //   yaw 在 V3 非必需(跟踪在 V4 用 look-ahead 自算朝向),但保留 Pose2D
-    //   以便 V4 直接消费。length() 是路径-最优性比对的核心量。
-    // ---------------------------------------------------------------------------
-    struct Path
-    {
-        std::vector<Pose2D> poses;
-
-        [[nodiscard]] bool empty() const noexcept { return poses.empty(); }
-        [[nodiscard]] std::size_t size() const noexcept { return poses.size(); }
-
-        // 相邻 waypoint 的累积欧氏长度(忽略 yaw)。
-        [[nodiscard]] double length() const noexcept;
-    };
 
     // ---------------------------------------------------------------------------
     // PlannerConfig: 规划器配置(来自 planner.yaml)。

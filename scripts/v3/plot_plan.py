@@ -12,7 +12,7 @@ plot_plan.py — 把一次全局规划画成发表用静态图(占据栅格 + �
       多张地图的出图不会互相覆盖)
 
 Run:
-    ./build/clang18-debug/sim --map maps/office.yaml --start 0.15,0.15 \\
+    ./build/clang18-debug/sim plan --map maps/office.yaml --start 0.15,0.15 \\
         --goal 1.85,1.35 --no-viz --out data/path.csv
     python scripts/v3/plot_plan.py --map maps/office.yaml --path data/path.csv
 """

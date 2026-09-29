@@ -224,7 +224,7 @@ Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-
   `nav2_core::GlobalPlanner` 的形态(不依赖 ROS 消息类型,使用项目
   自己的 `Path` 类型),V5 接入 Nav2 时只需要薄薄一层插件适配器
 - **配置**:yaml-cpp 读 `config/planner.yaml`(膨胀半径、启发式、连通度等),
-  CLI 可逐项覆盖;规划入口是 `sim --map`
+  CLI 可逐项覆盖;规划入口是 `sim plan`
 
 ### Layer 4 — 路径跟踪控制(V4 规划)
 
@@ -278,7 +278,7 @@ mininav/
 ├── .github/workflows/ci.yml        # GitHub Actions 工作流
 ├── config/
 │   ├── planner.yaml                # A* 规划器配置(V3)
-│   ├── robot.yaml                  # (规划) V4:机器人描述(几何 / 外形 / 执行器)
+│   ├── robot.yaml                  # 机器人描述(几何 / 外形 / 执行器限幅与滞后)(V4)
 │   └── nav.yaml                    # (规划) V4:导航参数(规划 / 控制 / 到达判定)
 ├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)
 ├── data/                           # 运行产出(不入库):traj.csv / path.csv
@@ -305,8 +305,10 @@ mininav/
 │                                   #   animate_search / gen_office500 / _mapio
 ├── results/                        # 实验产出:results/v{0,1,2,3}/ 下的 PNG / GIF
 ├── src/
-│   ├── core/                       # 运动学、类型、Trajectory、CSV、随机数、积分器、日志
+│   ├── core/                       # 运动学、类型、路径几何、机器人描述、Trajectory、CSV、随机数、积分器、日志
 │   │   ├── types.{ixx,cpp}         # Pose2D / Twist2D / EncoderTicks / SimState
+│   │   ├── path.{ixx,cpp}          # Path + 折线投影 / look-ahead 求交(V4 从 planning 迁入)
+│   │   ├── robot_description.{ixx,cpp}  # RobotDescription + robot.yaml 严格解析(V4)
 │   │   ├── math.ixx                # wrap_angle, kPi
 │   │   ├── kinematics.{ixx,cpp}    # differential_drive_step + inverse/forward
 │   │   ├── integrators.{ixx,cpp}   # rk4_step(V2 引入,真值与 EKF 共用)
@@ -320,13 +322,17 @@ mininav/
 │   │   ├── actuator_model.{ixx,cpp}
 │   │   ├── wheel_encoder.{ixx,cpp}
 │   │   └── imu_model.{ixx,cpp}     # V2 引入:gyro 白噪声 + 可漂移 bias
+│   ├── simulation/                 # 独立静态库(V4):被控对象,依赖 core + sensors
+│   │   ├── noise_presets.ixx       # 三档噪声标定(low-noise / default / high-noise)
+│   │   └── plant.{ixx,cpp}         # Plant:执行噪声 → encoder / IMU → 真值积分
 │   ├── localization/               # 独立静态库:估计器
 │   │   ├── wheel_odometry.{ixx,cpp}
 │   │   ├── ekf_state.ixx           # V2:Vec6/Mat6、StateIdx、EkfState6
 │   │   ├── ekf.{ixx,cpp}           # V2:6D EKF(predict + encoder/imu update)
-│   │   └── encoder_observation.{ixx,cpp}  # V2:解码 z 与推导 R
+│   │   ├── encoder_observation.{ixx,cpp}  # V2:解码 z 与推导 R
+│   │   └── ekf_pipeline.{ixx,cpp}  # V4:ticks + gyro → predict / update 编排(V5 EKF 节点边界)
 │   ├── planning/                   # 独立静态库(V3):只依赖 core + yaml-cpp
-│   │   ├── grid_types.{ixx,cpp}    # GridCoord / Path / PlannerConfig / is_admissible
+│   │   ├── grid_types.ixx          # GridCoord / PlannerConfig / is_admissible
 │   │   ├── planner_config.{ixx,cpp}  # planner.yaml 解析 / 序列化
 │   │   ├── occupancy_grid.{ixx,cpp}  # OccupancyGrid + world/grid 变换
 │   │   ├── map_io.{ixx,cpp}        # PGM(P2/P5)+ map.yaml 加载
@@ -337,19 +343,22 @@ mininav/
 │   │   ├── rerun_sink.{ixx,cpp}    # RerunSink : VizSink
 │   │   ├── sim_state_log.{ixx,cpp} # log_to_rerun(SimState, ...)
 │   │   └── plan_log.{ixx,cpp}      # PlanScene + log_plan(V3)
-│   ├── apps/
-│   │   └── sim_main.cpp            # 单一 sim:EKF 仿真 + --map 规划模式
-│   │                               #   (规划) V4:拆成 ekf / plan / nav 子命令
-│   ├── control/                    # (规划) V4:Controller 接口 + Pure Pursuit + 速度平滑
-│   └── simulation/                 # (规划) V4:被控对象 Plant(执行器动力学 + 噪声 + 传感器)
+│   ├── apps/sim/                   # 单一 sim,CLI11 子命令(模块 mininav.apps.sim)
+│   │   ├── main.cpp                # 子命令解析与分派
+│   │   ├── sim.ixx + common.cpp    # 选项结构、入口声明、各模式共享工具
+│   │   ├── ekf_mode.cpp            # sim ekf:V2 定位仿真
+│   │   └── plan_mode.cpp           # sim plan:V3 一次性规划;(规划) V4:nav_mode.cpp
+│   └── control/                    # (规划) V4:Controller 接口 + Pure Pursuit + 速度平滑
 ├── tests/                          # GoogleTest,按子库组织
-│   ├── core/                       # math / kinematics / trajectory / types / random
+│   ├── core/                       # math / kinematics / trajectory / types / random / path / robot_description
 │   ├── sensors/                    # actuator / wheel_encoder / imu_model
-│   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation
+│   ├── simulation/                 # plant(与直接组合传感器模型逐位相同)
+│   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation + ekf_pipeline
 │   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config
 │   ├── viz/                        # gmock:viz_sink_log_tests
 │   ├── control/                    # (规划) V4
-│   └── golden/                     # (规划) V4:golden CSV 回归基线
+│   ├── tools/                      # csv_compare:golden 比较工具 + 单测
+│   └── golden/                     # golden CSV 回归基线(标签 regression,见 golden/README.md)
 └── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、
                                     #   Nav2 插件(A* / Pure Pursuit)、bringup;只用标准消息
 ```

@@ -5,6 +5,7 @@ target_sources(localization
         wheel_odometry.cpp
         ekf.cpp
         encoder_observation.cpp
+        ekf_pipeline.cpp
         PUBLIC
         FILE_SET CXX_MODULES
         FILES
@@ -12,6 +13,7 @@ target_sources(localization
         ekf_state.ixx
         ekf.ixx
         encoder_observation.ixx
+        ekf_pipeline.ixx
 )
 
 target_link_libraries(localization PUBLIC core)

@@ -38,9 +38,9 @@ from analyze_integrator import load, overall_rmse, rmse_series, check_same_world
 
 
 def run_sim(binary: Path, seed: int, preset: str, integrator: str, out: Path) -> None:
-    """跑一次 sim(headless), 失败则抛错。"""
+    """跑一次 sim ekf(headless), 失败则抛错。"""
     cmd = [
-        str(binary), "--no-viz", "--seed", str(seed), "--preset", preset,
+        str(binary), "ekf", "--no-viz", "--seed", str(seed), "--preset", preset,
         "--integrator", integrator, "--out", str(out),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)

@@ -12,7 +12,6 @@ add_library(planning STATIC)
 
 target_sources(planning
         PRIVATE
-        grid_types.cpp
         planner_config.cpp
         occupancy_grid.cpp
         map_io.cpp

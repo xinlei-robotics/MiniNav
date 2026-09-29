@@ -36,7 +36,7 @@ mode = encoder+imu:
 Run:
     # 单次运行(2 条 RMSE):
     python scripts/v2/analyze_ekf.py --input data/traj.csv --output results/
-    # 三方 RMSE 对比(需另跑一次 sim --no-bias, 同 seed/preset):
+    # 三方 RMSE 对比(需另跑一次 sim ekf --no-bias, 同 seed/preset):
     python scripts/v2/analyze_ekf.py --input data/traj.csv \\
         --ekf-no-bias data/traj_nobias.csv --output results/
 """
@@ -57,7 +57,7 @@ def wrap_to_pi(angle: np.ndarray) -> np.ndarray:
     return np.arctan2(np.sin(angle), np.cos(angle))
 
 
-# 各 preset 注入的常数gyro bias 真值, 镜像 sim_main.cpp 的 NoisePreset.imu_bias_init。
+# 各 preset 注入的常数gyro bias 真值, 镜像 src/simulation/noise_presets.ixx 的 NoisePreset.imu_bias_init。
 # ⚠ 这是 Python 侧对 C++ 常量的手工镜像, 存在耦合: 改了 C++ preset 必须同步这里。
 #   更稳健的做法是让 C++ 把真值作为一列(如 imu_bias_true)写进 CSV, 分析脚本就
 #   完全不必知道 preset 表 —— 见文件末尾 main() 上方的说明。
@@ -416,7 +416,7 @@ def plot_bias_learning(df: pd.DataFrame, metadata: dict[str, str],
 
     这是 state augmentation 最直观的证据: b_ω 从无信息先验出发, 在 encoder+IMU
     双传感器把它变得【可观测】之后几秒内收敛到真值, Σ_bb 随之从 1e-2 量级塌缩。
-    镜像了 sim_main 在 Rerun Time Series 里画的 /plots/bias_omega/{ekf,truth}。
+    镜像了 sim ekf 在 Rerun Time Series 里画的 /plots/bias_omega/{ekf,truth}。
     """
     t = df["t"]
     bias_est = df["ekf_bias_omega"]

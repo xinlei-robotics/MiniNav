@@ -16,7 +16,7 @@ export namespace mininav
     // PlanScene: 一次全局规划的**纯几何**快照,供可视化下沉。
     //
     // 关键边界:本结构只认 Eigen::Vector2d(world 坐标)与 Pose2D —— 不认任何
-    // planning 类型(OccupancyGrid / Path / PlanResult)。因此 viz 库不依赖
+    // 规划产物(OccupancyGrid / PlanResult,以及 core 的 Path)。因此 viz 库不依赖
     // planning 库(见 docs/v3_summary.md §2.1 的依赖图)。把 OccupancyGrid 的占据
     // cell、膨胀 cell、A* 路径折线转成点集,是上层(app)的职责;log_plan 只负责
     // 把这些点集按约定的实体树布局推到 VizSink。

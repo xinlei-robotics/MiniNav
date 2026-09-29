@@ -5,9 +5,9 @@ RK4 vs Euler 归因实验。
 比较 EKF 内部过程模型用 RK4 与用一阶欧拉时, 估计精度的差异。两个输入 CSV 必须
 由同一 seed、同一 preset、仅 --integrator 不同的两次 sim 运行产生:
 
-    ./build/clang18-debug/sim --no-viz --seed 42 --preset default \\
+    ./build/clang18-debug/sim ekf --no-viz --seed 42 --preset default \\
         --integrator euler --out data/traj_euler.csv
-    ./build/clang18-debug/sim --no-viz --seed 42 --preset default \\
+    ./build/clang18-debug/sim ekf --no-viz --seed 42 --preset default \\
         --integrator rk4   --out data/traj_rk4.csv
     python scripts/v2/analyze_integrator.py \\
         --euler data/traj_euler.csv --rk4 data/traj_rk4.csv --output results/v2/

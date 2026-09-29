@@ -1,0 +1,26 @@
+# robot.yaml — 机器人描述(对应 mininav::RobotDescription),仿真与 V6 实车共用。
+#
+# 机器人参数的单一来源:被控对象、编码器 / IMU 仿真、EKF 的观测模型都从这里取
+# 几何量。全部字段必填;未知或拼错的 key 加载即报错,不会被静默忽略。
+#
+# 标 * 的是占位值(Adeept 4WD 套件量级),V6 实车实测后替换。V4 的控制结论以
+# 参数化形式给出(τ / T_L、切角系数、有效裕度),换值后可直接复用。
+#
+# 字段语义:
+#   wheel_radius            轮半径(米)
+#   wheel_base              左右轮中心距(米)
+#   ticks_per_rev           编码器每圈 tick 数
+#   footprint               矩形底盘外形;外接圆半径 √((l/2)² + (w/2)²) 用于碰撞与膨胀
+#   limits                  执行器饱和(硬件能力上限)
+#   actuator_time_constant  电机 + 驱动的一阶滞后 τ(秒);0 = 指令瞬间生效
+
+wheel_radius: 0.032
+wheel_base: 0.150
+ticks_per_rev: 1024
+footprint:
+  length: 0.22             # *
+  width: 0.16              # *   → 外接圆半径 ≈ 0.136 m
+limits:
+  max_linear_vel: 0.5      # *   m/s
+  max_angular_vel: 2.0     # *   rad/s
+actuator_time_constant: 0.10  # *

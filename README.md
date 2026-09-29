@@ -42,7 +42,7 @@ The project is organized as a multi-stage roadmap (V0 → V6), each
 version solving one well-scoped problem and building on the previous one.
 
 > **Current status: V3 complete.** An occupancy-grid map and an A\* global
-> planner now sit on top of V2's EKF localization: `sim --map` loads a
+> planner now sit on top of V2's EKF localization: `sim plan` loads a
 > ROS-style map, inflates obstacles by the robot radius, and plans an optimal
 > path in milliseconds. See
 > [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md) for the
@@ -205,7 +205,8 @@ extended as the stack grew.
   development); static PNGs are the publication artifact. Each format
   has a different reader and a different job.
 - **External configuration and structured logging**. yaml-cpp reads
-  `planner.yaml` and `map.yaml`; spdlog backs the unchanged
+  `robot.yaml` (the single source of robot geometry and limits),
+  `planner.yaml` and `map.yaml`, rejecting unknown keys; spdlog backs the unchanged
   `mininav.core.logger` interface and is linked privately into `core`, so no
   spdlog type leaks downstream.
 - **Strict warning policy**. `-Wall -Wextra -Wconversion -Werror` on
@@ -234,17 +235,19 @@ extended as the stack grew.
 └─────────────────────────────────────────────┘
 ```
 
-### Module dependencies (after V3)
+### Module dependencies
 
 ```mermaid
 graph TD
     sim[sim] --> core[core]
-    sim --> sensors[sensors]
+    sim --> simulation[simulation]
     sim --> localization[localization]
     sim --> planning[planning]
     sim --> viz[viz]
     sim --> cli11[CLI11]
 
+    simulation --> sensors[sensors]
+    simulation --> core
     sensors --> core
     localization --> core
     planning --> core
@@ -253,8 +256,10 @@ graph TD
     viz --> rerun[Rerun SDK]
     core --> eigen[Eigen3]
     core -.->|private| spdlog[spdlog]
+    core -.->|private| yamlcpp
 
     style core fill:#0a4f3f,color:#fff
+    style simulation fill:#1f4f1f,color:#fff
     style sensors fill:#1f4f1f,color:#fff
     style localization fill:#1f3f5c,color:#fff
     style planning fill:#5c3a1f,color:#fff
@@ -262,18 +267,22 @@ graph TD
     style sim fill:#5c4a1f,color:#fff
 ```
 
-`sensors` and `localization` remain **independent of each other** — they
-communicate only through plain structs (`EncoderTicks` plus a scalar gyro
-reading), passed through the `sim` main loop. The `Ekf` lives in the *same*
-`localization` library as the `WheelOdometry` baseline and consumes the
-*same* `EncoderTicks`; `sim` runs both side by side so the EKF can be
-scored against the odometry baseline on identical sensor streams. This
-dependency inversion is what makes V6 work without modifying the
-estimator: real GPIO ticks plug into the same struct the simulated
-encoder produces.
+The simulated robot and the estimator remain **independent of each other**.
+`simulation::Plant` (actuator noise, encoder and IMU models, ground truth)
+and `localization::EkfPipeline` (decode, predict, update) communicate only
+through plain structs — `EncoderTicks` plus a scalar gyro reading — passed
+through the `sim` main loop. The `Ekf` lives in the *same* `localization`
+library as the `WheelOdometry` baseline and consumes the *same*
+`EncoderTicks`; `sim` runs both side by side so the EKF can be scored
+against the odometry baseline on identical sensor streams. This dependency
+inversion is what makes V6 work without modifying the estimator: real GPIO
+ticks plug into the same struct the simulated encoder produces. It is also
+the V5 node boundary — a simulation node wraps the `Plant`, an EKF node
+wraps the `EkfPipeline`.
 
 `planning` follows the same rule: it depends only on `core` and yaml-cpp —
-an `OccupancyGrid` goes in, a `Path` comes out — so a SLAM-built map or a
+an `OccupancyGrid` goes in, a `Path` (a `core` type, like `nav_msgs/Path` in
+ROS) comes out — so a SLAM-built map or a
 real robot's start pose can feed the same planner unchanged. `viz` in turn
 does not depend on `planning`: a plan reaches the viewer as plain geometry
 (points and poses), converted by the app.
@@ -323,51 +332,58 @@ ctest --preset test-debug -L regression --output-on-failure
 
 ### Run the simulation
 
+`sim` takes a subcommand: `sim ekf` runs the localization simulation,
+`sim plan` a one-shot global plan. `sim <mode> --help` lists each mode's
+options; `sim` alone prints the overview.
+
 ```bash
 # Default: random seed, default preset, RK4 integrator, online bias estimation
-./build/clang18-debug/sim
+./build/clang18-debug/sim ekf
 
 # Fully reproducible run (the seed prints to stdout when omitted)
-./build/clang18-debug/sim --seed 42 --preset default
+./build/clang18-debug/sim ekf --seed 42 --preset default
 
 # Disable online gyro-bias estimation (the 'ekf (no bias)' baseline).
 # Write to its own file so it doesn't clobber the with-bias run above.
-./build/clang18-debug/sim --seed 42 --preset default --no-bias --out data/traj_nobias.csv
+./build/clang18-debug/sim ekf --seed 42 --preset default --no-bias --out data/traj_nobias.csv
 
 # Sensitivity knobs: scale the EKF's physics-derived Q / R (1.0 = physical
 # value). These tune the *filter* only — the simulated truth/measurements
 # are untouched.
-./build/clang18-debug/sim --q-scale 2.0      # trust the motion model less
-./build/clang18-debug/sim --r-scale 0.5      # trust the sensors more
+./build/clang18-debug/sim ekf --q-scale 2.0      # trust the motion model less
+./build/clang18-debug/sim ekf --r-scale 0.5      # trust the sensors more
 
 # RK4-vs-Euler attribution: same seed/preset, integrator the only difference
-./build/clang18-debug/sim --integrator euler --out data/traj_euler.csv
-./build/clang18-debug/sim --integrator rk4   --out data/traj_rk4.csv
+./build/clang18-debug/sim ekf --integrator euler --out data/traj_euler.csv
+./build/clang18-debug/sim ekf --integrator rk4   --out data/traj_rk4.csv
 
 # Headless / CI mode — only writes data/traj.csv
-./build/clang18-debug/sim --no-viz
+./build/clang18-debug/sim ekf --no-viz
 ```
+
+Robot geometry (wheel radius, wheel base, encoder resolution, footprint,
+actuator limits) comes from `config/robot.yaml`; pass `--robot <file>` to
+simulate a different robot.
 
 ### Plan a path (V3 planning mode)
 
-Passing `--map` switches `sim` from the EKF simulation to a one-shot,
-RNG-free global plan: load the map, inflate obstacles, run A\*, write
-`path.csv`, and show the result in Rerun.
+`sim plan` runs a one-shot, RNG-free global plan: load the map, inflate
+obstacles, run A\*, write `path.csv`, and show the result in Rerun.
 
 ```bash
 # Plan across the two-room office map (opens the Rerun Viewer, writes data/path.csv)
-./build/clang18-debug/sim --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 \
+./build/clang18-debug/sim plan --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 \
     --config config/planner.yaml
 
 # Override individual planner.yaml fields from the command line
-./build/clang18-debug/sim --map maps/maze.yaml --goal 0.95,0.95 --heuristic euclidean
+./build/clang18-debug/sim plan --map maps/maze.yaml --goal 0.95,0.95 --heuristic euclidean
 
 # Manhattan is only admissible on a 4-connected grid; pairing it with 8 is rejected
-./build/clang18-debug/sim --map maps/office.yaml --goal 1.85,1.35 \
+./build/clang18-debug/sim plan --map maps/office.yaml --goal 1.85,1.35 \
     --heuristic manhattan --connectivity 4
 
 # Headless: only writes the byte-deterministic path.csv
-./build/clang18-debug/sim --map maps/office.yaml --goal 1.85,1.35 --no-viz --out data/path.csv
+./build/clang18-debug/sim plan --map maps/office.yaml --goal 1.85,1.35 --no-viz --out data/path.csv
 ```
 
 `--goal` is required and `--start` defaults to the grid center (both in world
@@ -482,7 +498,7 @@ Rerun time-series view you watch `b_ω` start at 0 and converge toward the
 true bias within a few seconds — the payoff of the state augmentation,
 and (at `high-noise`) the place where you can watch it fail to settle.
 
-In planning mode (`sim --map`), the whole scene is logged once as static
+In planning mode (`sim plan`), the whole scene is logged once as static
 data:
 
 | Entity path                  | Meaning                                         |
