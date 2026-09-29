@@ -76,12 +76,12 @@ Maps roughly 1:1 to CMake targets and the 5-layer architecture.
 | Label                | Layer / Target                                      |
 |----------------------|-----------------------------------------------------|
 | `area: core`         | `mininav_core` — kinematics, types, Trajectory, RNG |
-| `area: sensors`      | `mininav_sensors` — actuator, encoder, IMU models   |
+| `area: sensors`      | `mininav_sensors` — actuator, encoder, IMU models; `mininav_simulation` plant (V4+) |
 | `area: localization` | `mininav_localization` — odometry, EKF              |
 | `area: planning`     | `mininav_planning` (V3+) — A*, occupancy grid       |
-| `area: control`      | `mininav_control` (V4+) — Pure Pursuit              |
+| `area: control`      | `mininav_control` (V4+) — controller interfaces, Pure Pursuit |
 | `area: viz`          | `mininav_viz` — Rerun integration                   |
-| `area: ros2`         | `ros2_ws/*` (V4+)                                   |
+| `area: ros2`         | `ros2_ws/*` (V5+) — nodes, Nav2 plugins, bringup    |
 | `area: hardware`     | Pi 5 / IMU / motors (V6+)                           |
 | `area: scripts`      | Python post-processing                              |
 | `area: build`        | CMake, presets, FetchContent setup                  |
@@ -117,10 +117,17 @@ answers "what does done look like for this version?"
 | V1 — Sensors, Noise & Odometry Drift | ✅ closed       | 0.2–0.6 m drift at 20s, default preset; byte-exact seed reproducibility |
 | V2 — EKF Sensor Fusion               | ✅ closed       | RMSE reduction ≥ 50% vs odom; Jacobian finite-diff tolerance ≤ 1e-6     |
 | V3 — Path Planning                   | ✅ closed       | A* on 200×200 map ≤ 50 ms; path length within 1 cell of shortest        |
-| V4 — Control + ROS 2                 | open (next)    | Pure Pursuit tracking error: mean ≤ 10 cm, peak ≤ 30 cm                 |
-| V5 — Full Simulation Loop            | open           | Goal-reach rate ≥ 80% on 5 scenarios; e2e latency ≤ 100 ms              |
+| V4 — Closed-Loop Path Tracking       | open (next)    | Control error (estimate-to-path): mean ≤ 10 cm, peak ≤ 30 cm; zero collisions with ground-truth feedback |
+| V5 — ROS 2 + Nav2 Integration        | open           | Goal-reach rate ≥ 80% on 5 scenarios (route lengths set from V4 drift data); e2e latency ≤ 100 ms |
 | V6 — Real Robot Deployment           | open           | Sim-to-real gap table; Hausdorff distance quantified                    |
 | V7 — SLAM Integration                | open (stretch) | Indoor mapping + navigation video                                       |
+
+> **Re-scoped on 2026-09-28.** V4 was originally *Control + ROS 2* and V5
+> *Full Simulation Loop*. Control and ROS 2 packaging are independent risks, and
+> tuning a controller inside asynchronous, wall-clock ROS 2 makes experiments
+> irreproducible. V4 therefore closes the plan–track loop in the deterministic
+> C++ simulation, and V5 takes over all ROS 2 / Nav2 work. The GitHub milestones
+> and their issues follow the same split.
 
 See [`docs/project_overview.md`](project_overview.md) for the full
 version roadmap and rationale.
@@ -159,8 +166,8 @@ reaches 1.0.
 | `v0.2.0` | V1 — Sensors, Noise & Odometry Drift             |
 | `v0.3.0` | V2 — EKF Sensor Fusion                           |
 | `v0.4.0` | V3 — Path Planning                               |
-| `v0.5.0` | V4 — Control + ROS 2                             |
-| `v0.6.0` | V5 — Full Simulation Loop                        |
+| `v0.5.0` | V4 — Closed-Loop Path Tracking                   |
+| `v0.6.0` | V5 — ROS 2 + Nav2 Integration                    |
 | `v1.0.0` | V6 — Real Robot Deployment (the project's "1.0") |
 | `v1.1.0` | V7 — SLAM Integration (if completed)             |
 

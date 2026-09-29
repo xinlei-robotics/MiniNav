@@ -80,8 +80,8 @@ infrastructure upgrade (#72), and the `sim --map` integration (#73).
   set; 4- or 8-connectivity, Manhattan / Euclidean / Octile heuristics,
   tie-breaking toward the goal, and no corner-cutting on diagonals.
 - **`GlobalPlanner` facade** shaped like `nav2_core::GlobalPlanner` but using
-  MiniNav's own `Pose2D` / `Path` types — the V4 ROS 2 layer only needs a
-  thin adapter.
+  MiniNav's own `Pose2D` / `Path` types — the V5 Nav2 integration only needs
+  a thin plugin adapter.
 - **External configuration** in `config/planner.yaml` (yaml-cpp), with each
   field overridable from the command line.
 
@@ -172,8 +172,8 @@ tags `v0.1.0` and `v0.2.0`.
 | **V1**  | Sensors, noise, odometry | Velocity Motion Model, encoder slip + quantization, `WheelOdometry`, drift experiments             | ✅      |
 | **V2**  | EKF state estimation     | Gyro IMU model, 6-state EKF (predict + encoder/IMU updates), online gyro-bias estimation, RK4 process model, NIS diagnostics, 20-seed RMSE study vs odom baseline | ✅      |
 | **V3**  | Path planning            | Occupancy grid (PGM + `map.yaml`), Euclidean obstacle inflation, A\* with admissibility-checked heuristics, YAML planner config, spdlog / gmock, `sim --map` planning mode | ✅      |
-| **V4**  | Control + ROS 2          | Pure Pursuit tracker, packaged as ROS 2 nodes                                                      |        |
-| **V5**  | Full simulation loop     | Goal-pose → plan → track → arrive demo in ROS 2                                                    |        |
+| **V4**  | Closed-loop path tracking | Regulated Pure Pursuit tracking the A\* path in the C++ simulation with the EKF estimate in the loop; control error measured separately from localization drift |        |
+| **V5**  | ROS 2 + Nav2 integration | Simulation and EKF nodes on standard messages; the A\* planner and the controller as Nav2 plugins; RViz2 goal-to-arrival demo |        |
 | **V6**  | Real-world deploy        | Sim-to-real on Pi 5 + 4WD car, indoor navigation video                                             |        |
 
 ---
@@ -224,7 +224,7 @@ extended as the stack grew.
 ┌─────────────────────────────────────────────┐
 │ Layer 5: Real Robot Deployment              │  Raspberry Pi 5 + 4WD car  (V6)
 ├─────────────────────────────────────────────┤
-│ Layer 4: Motion Control                     │  Pure Pursuit / PID        (V4)
+│ Layer 4: Motion Control                     │  Regulated Pure Pursuit    (V4)
 ├─────────────────────────────────────────────┤
 │ Layer 3: Global Planning                    │  Occupancy grid + A*       (V3 ✅)
 ├─────────────────────────────────────────────┤

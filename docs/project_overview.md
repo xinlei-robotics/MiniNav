@@ -2,13 +2,14 @@
 
 > 一个以现代 C++ 为核心、面向室内移动机器人的定位与导航系统。
 > 从差分驱动运动学仿真出发,逐步叠加噪声建模、EKF 多传感器融合、
-> 路径规划、跟踪控制、ROS 2 节点化,并最终在 Raspberry Pi 5 + 4WD
+> 路径规划、闭环跟踪控制、ROS 2 + Nav2 集成,并最终在 Raspberry Pi 5 + 4WD
 > 小车平台上完成室内自主移动的实车闭环。
 
-> **当前进度(截至 2026-09):V0 / V1 / V2 / V3 已完成**,V4(控制 + ROS 2)
-> 为下一个里程碑。本文档既是项目总愿景,也是版本路线图——已完成版本
-> (✅)的描述对齐仓库真实状态,未完成版本(V4–V7)是**前瞻规划**,
-> 其模块名、目录、量化指标均为设计意图,可能随实现调整。
+> **当前进度(截至 2026-09):V0 / V1 / V2 / V3 已完成**,V4(闭环路径跟踪)
+> 为下一个里程碑。2026-09-28 调整了 V4 / V5 的划分:V4 只在纯 C++ 仿真里完成
+> 闭环跟踪,ROS 2 + Nav2 集成整体移到 V5(理由见 §6 V4)。本文档既是项目总
+> 愿景,也是版本路线图——已完成版本(✅)的描述对齐仓库真实状态,未完成版本
+> (V4–V7)是**前瞻规划**,其模块名、目录、量化指标均为设计意图,可能随实现调整。
 
 ---
 
@@ -61,10 +62,11 @@ MiniNav 要回答移动机器人导航领域最核心的三个问题:
 | **yaml-cpp**              | `planner.yaml` / `map.yaml` 等外部配置文件   | V3(FetchContent 混合模式) |
 | **spdlog**                | 替换 V0 内置 logger,分级、带时间戳的日志        | V3(FetchContent 混合模式) |
 | **gmock**                 | `VizSink` 等接口的 mock,viz 层单测         | V3(随 GoogleTest)      |
-| **ROS 2 (Jazzy Jalisco)** | 节点化、topic 通信、RViz2 可视化、launch 系统 | V4 引入                 |
+| **ROS 2 (Jazzy Jalisco)** | 节点化、标准消息与 TF、RViz2 可视化、launch 系统    | V5 引入(规划)             |
+| **Nav2**                  | 行为树导航编排;A\* 规划器与 Pure Pursuit 控制器以插件接入 | V5 引入(规划)             |
 
 > **当前已集成**:Eigen3、GoogleTest / gmock、Rerun SDK、CLI11、yaml-cpp、
-> spdlog(V0–V3)。ROS 2 是 V4 的**规划项,尚未引入**。
+> spdlog(V0–V3)。ROS 2 与 Nav2 是 V5 的**规划项,尚未引入**。
 >
 > **依赖管理策略**:Eigen 用系统包(header-only 共享高效)、GoogleTest
 > 用纯 FetchContent(ABI 风险)、Rerun / CLI11 / yaml-cpp / spdlog 用
@@ -161,7 +163,7 @@ MiniNav 的系统架构自底向上分为五层,每一层对应一项可独立�
 ┌─────────────────────────────────────────────┐
 │ Layer 5: Real Robot Deployment              │  Raspberry Pi 5 + 4WD car
 ├─────────────────────────────────────────────┤
-│ Layer 4: Motion Control                     │  Pure Pursuit / PID
+│ Layer 4: Motion Control                     │  Regulated Pure Pursuit
 ├─────────────────────────────────────────────┤
 │ Layer 3: Global Planning                    │  Occupancy grid + A*
 ├─────────────────────────────────────────────┤
@@ -220,19 +222,26 @@ Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-
   启发式与连通度的组合必须 admissible(Manhattan + 8 连通会被拒绝)
 - **接口风格**:`GlobalPlanner` 类的签名提前对齐
   `nav2_core::GlobalPlanner` 的形态(不依赖 ROS 消息类型,使用项目
-  自己的 `Path` 类型),V4 引入 ROS 2 时只需要薄薄一层适配器
+  自己的 `Path` 类型),V5 接入 Nav2 时只需要薄薄一层插件适配器
 - **配置**:yaml-cpp 读 `config/planner.yaml`(膨胀半径、启发式、连通度等),
   CLI 可逐项覆盖;规划入口是 `sim --map`
 
-### Layer 4 — 路径跟踪控制
+### Layer 4 — 路径跟踪控制(V4 规划)
 
-- **控制器**:Pure Pursuit(主)+ PID(备选横向误差控制)
-- **接口风格**:`Controller` 类签名对齐 `nav2_core::Controller`
-- **输入**:当前 EKF 估计位姿 + 全局路径
-- **输出**:`Twist2D (v, w)` 指令,送回机器人模型(仿真)或底盘
-  驱动(实车)
-- **调参点**:look-ahead 距离、最大线速度、最大角速度
-  (V3 引入的 yaml-cpp 同样承载这些参数)
+- **控制器**:Regulated Pure Pursuit 的核心子集——速度自适应 look-ahead、
+  曲率限速、接近目标减速、大角度先原地转向、加速度限幅。不另做 PID 备选;
+  对照组是"定 look-ahead、不限速"的经典 Pure Pursuit(同版本消融)
+- **接口风格**:`Controller` / `GoalChecker` / `ProgressChecker` 对齐
+  `nav2_core` 的同名接口(不依赖 ROS 类型),V5 直接包成 Nav2 插件
+- **输入**:EKF 估计位姿与速度 + 全局路径(A\* 结果经首尾替换与视线捷径平滑)
+- **输出**:`Twist2D (v, w)` 指令,经执行器模型(饱和 + 一阶滞后)送回仿真,
+  或送到实车底盘驱动
+- **参数**:look-ahead 时间、期望速度、曲率限速半径、加速度上限放在
+  `config/nav.yaml`;轮径、轮距、底盘外形、执行器限幅与时间常数放在
+  `config/robot.yaml`(单一来源,膨胀半径由外形推导)。默认值由线性化稳定性
+  分析(look-ahead 时间必须大于执行器滞后)与安全裕度预算推出
+- **考核口径**:真值误差 ≤ 控制误差 + 定位误差。控制器只对"EKF 估计位姿到
+  路径"的误差负责;定位漂移单独报告,不混进控制指标
 
 ### Layer 5 — 实车系统
 
@@ -268,7 +277,9 @@ mininav/
 │   └── spdlog.cmake                # spdlog 混合模式引入(V3)
 ├── .github/workflows/ci.yml        # GitHub Actions 工作流
 ├── config/
-│   └── planner.yaml                # A* 规划器配置(V3)
+│   ├── planner.yaml                # A* 规划器配置(V3)
+│   ├── robot.yaml                  # (规划) V4:机器人描述(几何 / 外形 / 执行器)
+│   └── nav.yaml                    # (规划) V4:导航参数(规划 / 控制 / 到达判定)
 ├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)
 ├── data/                           # 运行产出(不入库):traj.csv / path.csv
 ├── docs/
@@ -328,17 +339,19 @@ mininav/
 │   │   └── plan_log.{ixx,cpp}      # PlanScene + log_plan(V3)
 │   ├── apps/
 │   │   └── sim_main.cpp            # 单一 sim:EKF 仿真 + --map 规划模式
-│   └── control/                    # (规划) V4:pure_pursuit
+│   │                               #   (规划) V4:拆成 ekf / plan / nav 子命令
+│   ├── control/                    # (规划) V4:Controller 接口 + Pure Pursuit + 速度平滑
+│   └── simulation/                 # (规划) V4:被控对象 Plant(执行器动力学 + 噪声 + 传感器)
 ├── tests/                          # GoogleTest,按子库组织
 │   ├── core/                       # math / kinematics / trajectory / types / random
 │   ├── sensors/                    # actuator / wheel_encoder / imu_model
 │   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation
 │   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config
 │   ├── viz/                        # gmock:viz_sink_log_tests
-│   └── control/                    # (规划) V4
-└── ros2_ws/                        # (规划) V4:ROS 2 工作空间
-    └── src/  ├ mininav_msgs ├ mininav_sim ├ mininav_localization
-              ├ mininav_planning └ mininav_control
+│   ├── control/                    # (规划) V4
+│   └── golden/                     # (规划) V4:golden CSV 回归基线
+└── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、
+                                    #   Nav2 插件(A* / Pure Pursuit)、bringup;只用标准消息
 ```
 
 ---
@@ -417,40 +430,78 @@ mininav/
   `docs/experiments/v3_planning.md`、`docs/math/astar_planning.md`、
   `docs/v3_summary.md`
 
-### V4 — 控制 + ROS 2 节点化
+### V4 — 闭环路径跟踪
 
-- **目标**:实现 Pure Pursuit 跟踪控制器,把 V0-V3 所有模块**重新
-  打包**成 ROS 2 节点。引入 ROS 2 Jazzy Jalisco。
-- **关键模块**:`PurePursuit`(接口对齐 `nav2_core::Controller`)、
-  ROS 2 packages(`mininav_msgs` / `mininav_sim` /
-  `mininav_localization` / `mininav_planning` / `mininav_control`)、
-  launch 文件、RViz2 配置
-- **量化指标**:在 V3 规划路径集合上,Pure Pursuit 跟踪误差均值
-  ≤ 10 cm、峰值 ≤ 30 cm(default 噪声下);ROS 2 节点 1Hz 心跳无
-  消息丢失
-- **交付**:ROS 2 工作空间、launch 文件、RViz2 截图、
-  `docs/experiments/v4_control.md`
+> **2026-09-28 调整**:原 V4 是"Pure Pursuit + 把 V0–V3 全部重新打包成 ROS 2
+> 节点",原 V5 是"在 ROS 2 内完成端到端闭环"。重新划分的理由:
+>
+> - 控制(新算法)与 ROS 化(新框架)是互不依赖的两类风险,绑在一起约 10 个
+>   PR,而第一次真正闭环开车要等到 V5;
+> - 在异步、按墙钟运行的 ROS 2 里调控制器,实验不可复现;确定性的 C++ 仿真
+>   (同 seed 逐字节一致、进 CI)才是开发与验证算法的地方;
+> - 原跟踪误差指标没有区分控制误差与定位漂移,按真值量,测到的主要是 EKF 漂移。
+>
+> 因此 V4 只在纯 C++ 仿真里完成闭环,ROS 2 + Nav2 集成整体移到 V5。
 
-### V5 — 完整仿真闭环
+- **目标**:让机器人沿 A\* 路径真正开到终点——规划 → 路径后处理 → 跟踪
+  (控制器输入 EKF 估计位姿)→ 到达,全程同 seed 逐字节确定。
+- **关键模块**:
+  - `control` 库:`Controller` / `GoalChecker` / `ProgressChecker`(对齐
+    `nav2_core`)、Regulated Pure Pursuit 子集、速度平滑器
+  - `simulation` 库:被控对象 `Plant`(执行器饱和 + 一阶滞后 → 执行噪声 →
+    真值积分 → 传感器);`localization` 新增 `EkfPipeline`。二者正是 V5 仿真
+    节点与 EKF 节点的边界
+  - 路径后处理:首尾替换为真实起止点、视线捷径平滑
+  - 机器人描述 `config/robot.yaml`(由外形推导膨胀半径)、导航参数
+    `config/nav.yaml`;一张真实尺度的演示地图
+  - `sim` 拆成 `ekf / plan / nav` 子命令;golden CSV 回归护栏进 CI
+- **量化指标**:
+  - 控制误差(EKF 估计位姿到路径的横向距离,default 噪声,5 场景 × 10 seed):
+    均值 ≤ 10 cm、峰值 ≤ 30 cm
+  - 线性化理论吻合:直线小偏置下,反向超调与调节距离相对解析值
+    (e^−π ≈ 4.3%、约 4.26 倍 look-ahead 距离)偏差 ≤ 10%
+  - 无噪声与 oracle(真值进控制器)运行:零碰撞、100% 到达
+  - 真值到达误差与碰撞率 vs 路程:只报告、不设门槛,用来决定 V5 场景设计与
+    绝对定位的引入时机
+- **交付**:`sim nav` 闭环模式、`nav.csv`、Rerun 闭环视图与 README GIF、
+  `docs/experiments/v4_control.md`、`docs/math/pure_pursuit.md`、
+  `docs/v4_summary.md`
 
-- **目标**:在 ROS 2 内串联 EKF + A\* + Pure Pursuit,完成
-  "给定 goal pose → 规划 → 跟踪 → 到达"的端到端 demo。
-- **量化指标**:在 5 个测试场景下,机器人成功到达 goal(误差
-  ≤ 20 cm)的成功率 ≥ 80%;端到端时延(goal 下发 → 第一条 cmd 输出)
-  ≤ 100 ms
-- **交付**:完整 sim demo MP4 + GIF(README 首屏与 LinkedIn
-  分享素材)、`docs/experiments/v5_full_loop.md`
+### V5 — ROS 2 + Nav2 集成
+
+- **目标**:把 V4 已验证的闭环搬进 ROS 2 Jazzy,由 Nav2 编排:在 RViz2 里
+  点目标 → 规划 → 跟踪 → 到达。
+- **关键模块**:
+  - 仿真节点(包 `Plant`):订阅 `/cmd_vel`,发布 `/joint_states`(轮子位置)、
+    `/imu`、`/clock`
+  - EKF 节点(包 `EkfPipeline`):按时间戳异步融合,发布 `/odom` 与 TF
+    `odom→base_link`(REP-105;`map→odom` 暂为静态,留给绝对定位)
+  - Nav2 插件:A\* 全局规划器与 Pure Pursuit 控制器(接口在 V3 / V4 已按
+    `nav2_core` 形态设计,插件只是薄适配);导航流程交给 Nav2 的
+    bt_navigator,不自写状态机
+  - 只用标准消息(`JointState` / `Imu` / `Odometry` / TF / `Path` /
+    `OccupancyGrid`),不建自定义消息包。这些正是 V6 硬件驱动要发的话题,
+    EKF 节点在仿真与实车之间一行不改
+  - launch、参数文件、RViz2 配置;launch_testing 端到端测试进 CI
+- **量化指标**:5 个场景目标到达率 ≥ 80%(真值误差 ≤ 20 cm;场景路程上限按
+  V4 测得的漂移曲线确定);端到端时延(goal 下发 → 第一条 cmd_vel)≤ 100 ms
+- **交付**:colcon 工作空间、RViz2 导航 demo(MP4 + GIF,README 首屏与
+  LinkedIn 分享素材)、`docs/experiments/v5_full_loop.md`
 
 ### V6 — 实车部署
 
 - **目标**:在 Raspberry Pi 5 上跑整套 ROS 2 系统,驱动加装了
   BNO055 IMU 与编码器电机的 Adeept 4WD 小车,完成室内自主导航。
-- **硬件准备**:
+- **硬件准备**(提前采购,与 V4 / V5 软件并行):
   - 加装 BNO055 IMU(I2C)
   - 替换原车 N20 电机为**带编码器**的电机
   - 必要时补充降压模块、电源隔离
 - **关键工作**:实车 odom 标定、IMU 标定与温漂补偿、EKF 噪声
-  参数从 V2 仿真值迁移到实车标定值
+  参数从 V2 仿真值迁移到实车标定值;`config/robot.yaml` 换成实测值(外形、
+  限幅、执行器时间常数、滑移转向的有效轮距)
+- **绝对定位**:4WD 是滑移转向,打滑远大于差速仿真,真机的到达精度几乎一定
+  离不开绝对定位。方案(ArUco + Pi 摄像头,或 2D LiDAR + AMCL / slam_toolbox)
+  依据 V4 的"到达误差 vs 路程"数据在 V6 开工前确定
 - **量化指标**:**sim-to-real gap 表格**——每个 EKF / 控制器
   参数的仿真值 vs 实车标定值并列;同一条命令序列在仿真与实车上
   的轨迹 Hausdorff 距离 ≤ X m
@@ -493,8 +544,8 @@ Viewer 实时渲染 3D/2D 视图与时间序列,支持暂停、回放、倒带;�
 | V1 | **三轨迹**:cmd_traj(完美执行)/ truth(actuator 噪声后)/ odom(编码器全链路)<br/>诊断时序:cmd_v/w、true_velocity_v/w、encoder_dticks_l/r、error/position、error/yaw |
 | V2 | 在三轨迹上叠加 `ekf` 估计轨迹;`bias_omega` 学习曲线(估计 vs 真值)实时收敛演示;协方差椭圆演化由 Python 脚本离线出图                                                              |
 | V3 | 占据栅格 + 膨胀安全裕度 + A\* 规划路径 + 起止位姿(static);A\* 搜索展开过程由 `scripts/v3/animate_search.py` 离线渲染成动画                                         |
-| V4 | 完整导航过程:地图 + 路径 + 机器人轨迹 + look-ahead 点                                                                                                    |
-| V5 | ROS 2 topic 直接接入 Rerun(或并行接 RViz2)                                                                                                       |
+| V4 | 闭环导航:地图 + 原始 / 平滑路径 + 真值与 EKF 轨迹 + EKF 3σ 椭圆 + look-ahead 点与追踪圆弧 + 控制 / 定位 / 真值三种误差时序 |
+| V5 | RViz2 为主(Nav2 标准面板:地图、代价地图、路径、机器人位姿);需要时把 ROS 2 topic 桥接到 Rerun |
 | V6 | 实车实时可视化(Pi 端流到 PC 端 Rerun)                                                                                                               |
 
 ### 7.2 Python 静态图的角色
@@ -510,8 +561,9 @@ Python 脚本从 CSV 出 PNG/PDF/GIF。`.rrd` 是二进制格式不可 diff、
 
 ### 7.3 MP4 / GIF 的角色
 
-V3 的 A\* 搜索动画(`search_office500.gif`)目前是 README 首屏;V5 完整
-闭环 demo 与 V6 实车视频将是之后的首屏与外部分享素材。
+V3 的 A\* 搜索动画(`search_office500.gif`)目前是 README 首屏;V4 的闭环
+导航 GIF、V5 的 RViz2 / Nav2 导航 demo 与 V6 实车视频将依次成为之后的首屏
+与外部分享素材。
 Rerun 录屏 + ffmpeg 转 GIF 是标准生成路径。简历 PDF 无法嵌入
 GIF,但 GitHub README 与 LinkedIn 帖子可以。
 
@@ -534,7 +586,7 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 
 每个静态库对应一个测试可执行档(`core_tests` / `sensors_tests` /
 `localization_tests` / `planning_tests` / `viz_tests`,V4 起加
-`control_tests`),通过 `gtest_discover_tests` 自动注册到 CTest,并按库打
+`control_tests` / `simulation_tests`),通过 `gtest_discover_tests` 自动注册到 CTest,并按库打
 标签(`ctest -L planning`),支持 `ctest -R` 精细化筛选。
 
 | 库              | 覆盖重点                                                                     |
@@ -544,7 +596,7 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 | `localization` | WheelOdometry 纯函数性、EKF predict/update、**雅可比有限差分数值验证**(V2)                |
 | `planning`     | 坐标往返、PGM 加载与 y 翻转、欧氏膨胀、A\* 精确最优长度、不可达检测、启发式可采纳性拒绝、200×200 压力图与耗时(V3) |
 | `viz`          | gmock 断言可视化下沉的实体路径与调用契约,不起 Viewer(V3)                                   |
-| `control`      | Pure Pursuit 在直线/圆弧上的输出合理性(V4)                                           |
+| `control`      | 解析用例:直线小偏置的超调与调节距离对照线性化解、圆弧稳态误差为零、切角与 look-ahead 成正比;限速、原地转向、到达停车(V4) |
 
 ### 8.2 CSV 回归 diff
 
@@ -552,6 +604,9 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 与 baseline diff,空 diff 即证明无数值回归。这条 baseline diff
 **同时检验**多个不变量:RngFactory 稳定性、σ=0 跳过 RNG 约定、
 估计器纯函数性、主循环无隐式状态——任何一处违反都会让 diff 非空。
+V4 计划把这条 diff 固化为 CTest 的 golden 回归:EKF / 规划 / 导航三种模式的
+基线 CSV 入库(`tests/golden/`)并进 CI;浮点列按 1e-9 相对容差比较,以容忍
+不同 CPU 上 libm 实现的末位差异。
 
 ### 8.3 可复现性回归(V1 起)
 
@@ -560,15 +615,19 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 
 ### 8.4 集成测试(V4 起)
 
-V4 引入 ROS 2 后,通过 `colcon test` 跑节点级集成测试:
-节点能否正常启动、topic 能否正确收发、launch 文件是否有效。
+V4:`sim nav` 闭环集成测试进 CTest——无噪声下到达且零碰撞、oracle(真值进
+控制器)下到达误差在容差内、同 seed 两次运行 `nav.csv` 逐字节一致。
+
+V5:引入 ROS 2 后,通过 `colcon test` + launch_testing 跑节点级与端到端集成
+测试——节点能否正常启动、topic 能否正确收发、发出目标后能否到达。
 
 ### 8.5 持续集成
 
 GitHub Actions 已激活,环境为 `ubuntu-24.04 + clang-18`,每个 PR 与
 push 到 `main` 时以 Debug preset 构建并跑全部单元测试。CSV 回归 diff 目前
 在本地手动执行,尚未进 CI;只在 Release 下有意义的断言(如 A\* 的 50 ms
-耗时预算)在 CI 中显示为 Skipped。V4 之后加入 ROS 2 节点的 colcon test。
+耗时预算)在 CI 中显示为 Skipped。V4 计划把 golden 回归与闭环集成测试纳入
+CI;V5 再加入 ROS 2 的 colcon test。
 
 ---
 
@@ -590,7 +649,7 @@ C++ 负责**系统跑起来**,Python 负责**实验讲清楚**。
 ### 10.1 代码资产
 
 - 模块化、带测试、CI 持续运行的 C++ 代码库
-- ROS 2 工作空间(V4 之后)
+- ROS 2 工作空间与 Nav2 插件(V5 之后)
 - Python 实验脚本
 
 ### 10.2 文档资产
@@ -604,8 +663,8 @@ C++ 负责**系统跑起来**,Python 负责**实验讲清楚**。
 | `runge_kutta_integration.md` | RK4 过程积分及其解析 Jacobian                      | V2 |
 | `astar_planning.md`          | 占据栅格与配置空间膨胀、A\* 最优性证明、启发式在 4/8 连通下的可采纳性与一致性 | V3 |
 
-> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`);V4+ 的控制推导待
-> 对应版本补齐。
+> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`)。V4 计划新增
+> `pure_pursuit.md`:几何、直线附近线性化与滞后稳定性、切角尺度律、安全裕度预算。
 
 **实验报告**(`docs/experiments/`):每个版本结束时一篇,说清楚"问题→
 方案→坑→结果",含图、数据、结论。已有 `v2_ekf_fusion.md`(V2)、
@@ -622,7 +681,8 @@ milestone 与发布约定。
 - V0-V2:Rerun 录屏 + Python PNG(三轨迹对比、漂移曲线、协方差椭圆)
 - V2:EKF RMSE 表格
 - V3:A\* 搜索过程动画(500×500 楼宇平面)、规划总览图、耗时与最优性图表
-- V5:**完整仿真导航 MP4 + GIF**(README 首屏)
+- V4:**闭环导航 GIF**(仿真,README 首屏候选)
+- V5:**RViz2 / Nav2 导航 MP4 + GIF**(README 首屏与分享素材)
 - V6:**实车导航视频**+ **sim-to-real gap 表格**
 
 ### 10.4 量化指标汇总
@@ -635,8 +695,8 @@ milestone 与发布约定。
 | V1 | `default` preset 20s 位置漂移 0.2-0.6 m,seed 复现性 byte-exact             |
 | V2 | 融合增益档位相关(low-noise position RMSE −48.9%),雅可比有限差分双路径校验;bias 估计工作域已量化 |
 | V3 | 200×200 地图 A\* 规划 ≤ 50 ms(实测 p95 3.94 ms),路径长度偏差 ≤ 1 cell(实测 0 cell) |
-| V4 | Pure Pursuit 跟踪误差均值 ≤ 10 cm、峰值 ≤ 30 cm                              |
-| V5 | 5 个测试场景到达成功率 ≥ 80%,端到端时延 ≤ 100 ms                                   |
+| V4 | 控制误差(估计位姿到路径)均值 ≤ 10 cm、峰值 ≤ 30 cm;线性化理论吻合 ≤ 10%;无噪声 / oracle 零碰撞 |
+| V5 | Nav2 闭环:5 个场景到达率 ≥ 80%(场景路程按 V4 漂移数据确定),端到端时延 ≤ 100 ms |
 | V6 | sim-to-real gap 表(每个参数仿真 vs 实测),轨迹 Hausdorff 距离量化                   |
 
 ---
@@ -649,7 +709,7 @@ milestone 与发布约定。
 | **可解释**  | 每一层都有数学推导、设计文档与实验验证                                                      |
 | **可量化**  | 每个版本都有显式量化指标,有图、有 RMSE、有参数扫描、有 sim-to-real gap                           |
 | **可扩展**  | 从 V0 到 V6 的每一步都是向前兼容的迭代,而非重写;每个里程碑由 git tag 完整保存,trunk 只保留当前最佳设计             |
-| **工程味重** | 现代 C++(modules、ADL 扩展点、PIMPL)、CMakePresets、GoogleTest、CI、ROS 2、Rerun 全家桶 |
+| **工程味重** | 现代 C++(modules、ADL 扩展点、PIMPL)、CMakePresets、GoogleTest、CI、ROS 2 / Nav2、Rerun 全家桶 |
 | **有实车**  | Raspberry Pi 5 + 4WD(替换带编码器电机 + BNO055 IMU)真实部署,含 sim-to-real 叙事         |
 
 ---
@@ -658,5 +718,5 @@ milestone 与发布约定。
 
 > MiniNav 是一个以**现代 C++ 为核心**、面向室内移动机器人的定位
 > 与导航系统,从运动学仿真出发,逐步叠加噪声建模、EKF 多传感器
-> 融合、A\* 路径规划、Pure Pursuit 跟踪控制、ROS 2 节点化,并
+> 融合、A\* 路径规划、Pure Pursuit 闭环跟踪、ROS 2 + Nav2 集成,并
 > 最终在 Raspberry Pi 5 小车上完成室内自主导航的实车闭环验证。

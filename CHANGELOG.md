@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Roadmap re-scoped: V4 now closes the plan–track loop in the deterministic C++
+  simulation (a Regulated Pure Pursuit subset with the EKF estimate in the loop),
+  and all ROS 2 work — nodes on standard messages, plus the A\* planner and the
+  controller as Nav2 plugins — moves to V5 (`docs/project_overview.md` §6)
+
 ## [0.4.0] - 2026-09-27
 
 V3 — Global Path Planning.

@@ -220,7 +220,7 @@ diff a.csv b.csv     # 空 diff ✅
   `scripts/v3/plot_plan.py` 出发表用静态图。
 
 `Path` 与 `GlobalPlanner` 接口已对齐 nav2 形态,为 V4 的 Pure Pursuit 跟踪与
-ROS 2 化铺好底座;`OccupancyGrid` 是未来 scan matching / 地图匹配钉住 V2 位置
+V5 的 ROS 2 / Nav2 集成铺好底座;`OccupancyGrid` 是未来 scan matching / 地图匹配钉住 V2 位置
 漂移的地图后端。规划起点 `start` 是普通 `Pose2D`,在完整系统里即 V2 EKF 的估计
 位姿 —— 这是 V2→V3 的接缝,但规划入口刻意保持无 RNG / 确定,EKF→start 的注入
 留给上层(见第 5 节)。

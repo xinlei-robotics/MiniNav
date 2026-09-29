@@ -24,9 +24,13 @@ V2 把"概率状态估计 + 诚实的实验框架"打磨完,同时留下一个�
 | **V1** | 噪声 + 里程计    | 工业级 actuator + encoder 噪声模型,带漂移的 odom 估计;暴露漂移问题                                       |
 | **V2** | EKF 状态估计    | 6 维 EKF 融合 encoder + gyro,在线 bias 估计,RK4 过程模型,NIS 一致性诊断,20-seed RMSE 量化               |
 | **V3** | 全局路径规划      | 占据栅格(PGM + map.yaml)、欧氏距离膨胀、A\*(4/8 连通,可采纳性校验)、YAML 配置、spdlog / gmock、`sim --map` 规划模式 |
-| **V4** | 控制 + ROS2 化 | Pure Pursuit 跟踪控制器,系统打包成 ROS2 节点                                                      |
-| **V5** | 完整仿真闭环      | 在 ROS2 内完成"给定目标点 → 规划 → 跟踪 → 到达"的端到端 demo                                             |
+| **V4** | 闭环路径跟踪      | Regulated Pure Pursuit 在纯 C++ 仿真里沿 A\* 路径闭环(控制器输入 EKF 估计),控制误差与定位误差分开量化 |
+| **V5** | ROS 2 + Nav2 集成 | 仿真 / EKF 节点(标准消息)、A\* 与 Pure Pursuit 做成 Nav2 插件,RViz2 点目标导航 |
 | **V6** | 实车部署        | Raspberry Pi 5 + 小车的 sim-to-real,室内导航视频                                               |
+
+> 2026-09-28 调整:V4 / V5 重新划分——V4 只在纯 C++ 仿真里完成闭环路径跟踪,
+> ROS 2 + Nav2 集成整体移到 V5(理由见 [`project_overview.md`](project_overview.md)
+> §6 V4)。上表的 V4 / V5 两行已按调整后的计划更新,§9 同。
 
 ### 0.2 V3 版本总结
 
@@ -345,7 +349,7 @@ class AStarPlanner final : public GlobalPlanner { ... };
 ```
 
 签名形态对齐 `nav2_core::GlobalPlanner::createPlan(start, goal)`,但只用项目自己的
-`Pose2D` / `Path`,不引入任何 ROS 消息类型。V4 做 ROS 2 化时,只需要一层把
+`Pose2D` / `Path`,不引入任何 ROS 消息类型。V5 接入 Nav2 时,只需要一层把
 `nav_msgs::msg::Path` ↔ `Path` 互转的薄适配器;将来换 Theta\* 或 Hybrid A\*,
 调用方也不用改。
 
@@ -681,20 +685,29 @@ CRLF;PGM 解析器能容忍 `\r`,所以目前没有问题。**触发**:开始提
 
 ## 9. 下一版本 V4 路线
 
+> 2026-09-28 调整:本节原计划 V4 = "Pure Pursuit + ROS 2 节点化"(`mininav_msgs` /
+> `_sim` / `_localization` / `_planning` / `_control` 五个包)。控制与 ROS 化是互不
+> 依赖的两类风险,而在异步、按墙钟运行的 ROS 2 里调控制器会让实验不可复现,
+> 所以 V4 只在确定性的纯 C++ 仿真里完成闭环,ROS 2 + Nav2 集成整体移到 V5
+> (见 [`project_overview.md`](project_overview.md) §6)。
+
 V3 交付了"我要去哪、怎么规划过去",V4 回答"怎么走过去"。
 
-1. **Pure Pursuit 跟踪控制器**:接口对齐 `nav2_core::Controller`,输入 EKF 估计位姿
-   与 `Path`,输出 `Twist2D (v, ω)`。它首先是一个纯 C++ 库,可以先在现有 `sim` 里
-   闭环验证(EKF 位姿 → A\* 路径 → Pure Pursuit → 机器人运动),再打包成节点。
-2. **ROS 2 节点化**:`mininav_msgs` / `_sim` / `_localization` / `_planning` /
-   `_control`,launch 文件与 RViz2 配置。
-3. **补齐 V3 留给 V4 的接缝**:EKF 估计位姿接入规划起点(§3.8);路径平滑(§8.1);
-   由底盘外形推导膨胀半径(§8.6)。
+1. **Pure Pursuit 跟踪控制器**(Regulated Pure Pursuit 子集):`Controller` /
+   `GoalChecker` / `ProgressChecker` 对齐 `nav2_core`,输入 EKF 估计位姿与 `Path`,
+   输出 `Twist2D (v, ω)`。它是纯 C++ 库,在 `sim` 里闭环验证(EKF 位姿 → A\* 路径 →
+   Pure Pursuit → 机器人运动)。
+2. **被控对象真实化与误差分解**:机器人参数单一来源(由底盘外形推导膨胀半径,
+   §8.6)、执行器饱和与一阶滞后;控制误差(估计位姿到路径)与定位误差分开量化。
+3. **补齐 V3 留给 V4 的接缝**:EKF 估计位姿接入规划起点(§3.8);路径首尾替换与
+   视线捷径平滑(§8.1、§8.5);golden CSV 回归与 `.gitattributes`(§8.9)。
+
+ROS 2 节点化移到 V5,且改用标准消息 + Nav2 插件,不再自建消息包与状态机。
 
 **V3 为 V4 准备了什么**:
 
-- `Path` + `GlobalPlanner`(nav2 形态)→ Pure Pursuit 直接消费 `Path`,ROS 2 化只需
-  薄适配器;
+- `Path` + `GlobalPlanner`(nav2 形态)→ Pure Pursuit 直接消费 `Path`,V5 接入 Nav2
+  只需薄适配器;
 - `planner.yaml` + yaml-cpp 的配置模式 → 控制器参数(look-ahead、限速)直接照搬;
 - `VizSink` + gmock → V4 的可视化逻辑同样可以不起 Viewer 做单测;
 - `OccupancyGrid` → 将来 scan matching / 地图匹配的地图后端,也是 V7 slam_toolbox
