@@ -13,8 +13,19 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and Test (Clang 18, Debug)
+    name: Build and Test (Clang 18, ${{ matrix.build_type }})
     runs-on: ubuntu-24.04
+
+    # Debug keeps -Werror; Release runs the wall-clock budget tests that are
+    # skipped in Debug, and checks the golden baselines under optimization.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build_type: Debug
+            preset: ci-debug
+          - build_type: Release
+            preset: ci-release
 
     steps:
       - name: Checkout repository
@@ -39,22 +50,25 @@ jobs:
           cmake --version
           ninja --version
 
-      - name: Configure (CI Debug preset)
-        run: cmake --preset ci-debug
+      - name: Configure (${{ matrix.preset }} preset)
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build --preset build-ci-debug
+        run: cmake --build --preset build-${{ matrix.preset }}
 
       - name: Run tests
-        run: ctest --preset test-ci-debug
+        run: ctest --preset test-${{ matrix.preset }}
 
+      # golden_out holds the CSVs the regression tests produced on this runner;
+      # diff them against tests/golden/ to see what changed.
       - name: Upload test logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
+          name: test-logs-${{ matrix.build_type }}
           path: |
-            build/ci-debug/Testing/Temporary/LastTest.log
-            build/ci-debug/CMakeFiles/CMakeOutput.log
-            build/ci-debug/CMakeFiles/CMakeError.log
+            build/${{ matrix.preset }}/Testing/Temporary/LastTest.log
+            build/${{ matrix.preset }}/CMakeFiles/CMakeOutput.log
+            build/${{ matrix.preset }}/CMakeFiles/CMakeError.log
+            build/${{ matrix.preset }}/tests/golden_out/
           if-no-files-found: ignore

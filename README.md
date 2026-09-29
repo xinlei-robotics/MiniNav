@@ -314,8 +314,11 @@ cmake --preset clang18-debug
 # Incremental builds
 cmake --build --preset build-debug -j
 
-# Run all tests (core / sensors / localization / planning / viz)
+# Run all tests (core / sensors / localization / planning / viz / regression)
 ctest --preset test-debug --output-on-failure
+
+# Golden CSV regression only (end-to-end sim runs vs tests/golden/)
+ctest --preset test-debug -L regression --output-on-failure
 ```
 
 ### Run the simulation
