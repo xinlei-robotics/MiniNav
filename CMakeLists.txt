@@ -29,6 +29,7 @@ add_subdirectory(src/sensors)
 add_subdirectory(src/simulation)
 add_subdirectory(src/localization)
 add_subdirectory(src/planning)
+add_subdirectory(src/control)
 
 # ------------------------------------------------------------------
 # 目标: sim

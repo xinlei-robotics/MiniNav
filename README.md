@@ -252,6 +252,8 @@ graph TD
     localization --> core
     planning --> core
     planning --> yamlcpp[yaml-cpp]
+    control[control] --> core
+    control -.->|private| yamlcpp
     viz --> core
     viz --> rerun[Rerun SDK]
     core --> eigen[Eigen3]
@@ -263,6 +265,7 @@ graph TD
     style sensors fill:#1f4f1f,color:#fff
     style localization fill:#1f3f5c,color:#fff
     style planning fill:#5c3a1f,color:#fff
+    style control fill:#5c1f3a,color:#fff
     style viz fill:#3a1f5c,color:#fff
     style sim fill:#5c4a1f,color:#fff
 ```
@@ -286,6 +289,12 @@ ROS) comes out — so a SLAM-built map or a
 real robot's start pose can feed the same planner unchanged. `viz` in turn
 does not depend on `planning`: a plan reaches the viewer as plain geometry
 (points and poses), converted by the app.
+
+`control` (V4, in progress) depends only on `core` as well: the Regulated
+Pure Pursuit controller, velocity smoother, and goal / progress checkers
+mirror the `nav2_core` plugin interfaces and see only `Path`, `Pose2D` and
+`Twist2D` — no grid, no EKF, no sensors — so V5 can wrap them as Nav2 plugins
+unchanged.
 
 **Versioning policy.** `main` reflects the current best design; superseded
 code is refactored away rather than kept alongside. Each completed

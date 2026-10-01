@@ -348,7 +348,13 @@ mininav/
 │   │   ├── sim.ixx + common.cpp    # 选项结构、入口声明、各模式共享工具
 │   │   ├── ekf_mode.cpp            # sim ekf:V2 定位仿真
 │   │   └── plan_mode.cpp           # sim plan:V3 一次性规划;(规划) V4:nav_mode.cpp
-│   └── control/                    # (规划) V4:Controller 接口 + Pure Pursuit + 速度平滑
+│   └── control/                    # 独立静态库(V4):只依赖 core,接口对齐 nav2_core
+│       ├── controller.ixx          # Controller / GoalChecker / ProgressChecker 接口
+│       ├── pure_pursuit.{ixx,cpp}  # Regulated Pure Pursuit 子集
+│       ├── velocity_smoother.{ixx,cpp}  # 加速度限幅(两分量同比例收缩)
+│       ├── goal_checker.{ixx,cpp}  # 到达判定(位置锁存 + 可选朝向)
+│       ├── progress_checker.{ixx,cpp}  # 卡住判定
+│       └── controller_config.{ixx,cpp}  # nav.yaml 的 controller / goal_checker / progress_checker 段
 ├── tests/                          # GoogleTest,按子库组织
 │   ├── core/                       # math / kinematics / trajectory / types / random / path / robot_description
 │   ├── sensors/                    # actuator / wheel_encoder / imu_model
@@ -356,7 +362,8 @@ mininav/
 │   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation + ekf_pipeline
 │   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config
 │   ├── viz/                        # gmock:viz_sink_log_tests
-│   ├── control/                    # (规划) V4
+│   ├── control/                    # pure_pursuit + 解析用例(e^−π、4.26 L、圆弧零误差、切角尺度律)/
+│   │                               #   velocity_smoother / goal_checker / controller_config
 │   ├── tools/                      # csv_compare:golden 比较工具 + 单测
 │   └── golden/                     # golden CSV 回归基线(标签 regression,见 golden/README.md)
 └── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、
