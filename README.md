@@ -393,7 +393,23 @@ obstacles, run A\*, write `path.csv`, and show the result in Rerun.
 
 # Headless: only writes the byte-deterministic path.csv
 ./build/clang18-debug/sim plan --map maps/office.yaml --goal 1.85,1.35 --no-viz --out data/path.csv
+
+# Post-process the A* staircase (V4): true endpoints + line-of-sight shortcuts.
+# On office500 this turns 524 waypoints / 34.37 m into 13 waypoints / 33.33 m.
+./build/clang18-debug/sim plan --map maps/office500.yaml --start 1.175,1.175 \
+    --goal 23.875,23.875 --config config/planner.yaml --smooth
+
+# Real-scale floor plan for closed-loop experiments, inflated by the robot footprint
+./build/clang18-debug/sim plan --map maps/apartment.yaml --start 2.9,1.6 --goal 7.2,5.6 \
+    --inflation-radius 0.25 --smooth
 ```
+
+`maps/apartment` is a 10 m × 7 m floor plan (rooms, 0.8–0.9 m doors, furniture)
+generated from the rectangle list in `maps/src/apartment.toml` by
+`python scripts/v4/gen_floorplan.py maps/src/apartment.toml`. Unlike the
+hand-drawn demo maps, it stays connected once inflated by the robot footprint.
+The current layout is a placeholder; editing the TOML with the real room's
+measurements and regenerating swaps it out.
 
 `--goal` is required and `--start` defaults to the grid center (both in world
 meters). Take timing numbers from the Release build

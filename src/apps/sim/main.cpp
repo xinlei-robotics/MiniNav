@@ -103,6 +103,10 @@ namespace
         cmd->add_option("--inflation-radius", opts.inflation_radius,
                         "Obstacle inflation radius override (meters).")
            ->check(CLI::NonNegativeNumber);
+        cmd->add_flag("--smooth", opts.smooth,
+                      "Post-process the A* path: replace the end cells with the true start and "
+                      "goal, then shortcut along lines of sight on the inflated costmap. "
+                      "path.csv then holds the smoothed path plus the raw size in its header.");
 
         add_output_options(*cmd, opts.output, "path.csv");
         return cmd;

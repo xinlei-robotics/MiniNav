@@ -66,6 +66,11 @@ export namespace mininav::planning
         [[nodiscard]] PlanResult plan(const Pose2D& start,
                                       const Pose2D& goal) const override;
 
+        // 只读访问:膨胀后的 costmap 与配置,供路径后处理在同一张图、同一套可通行
+        // 规则下做视线检查。
+        [[nodiscard]] const OccupancyGrid& costmap() const noexcept { return grid_; }
+        [[nodiscard]] const PlannerConfig& config() const noexcept { return cfg_; }
+
     private:
         OccupancyGrid grid_;        // 膨胀后的 costmap
         PlannerConfig cfg_;

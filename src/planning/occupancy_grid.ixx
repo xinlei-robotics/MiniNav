@@ -56,6 +56,10 @@ export namespace mininav::planning
         [[nodiscard]] std::int8_t at(GridCoord c) const noexcept;   // 越界 → kOccupied
         [[nodiscard]] bool is_free(GridCoord c) const noexcept;
 
+        // 规划意义上的可通行:free 必可走;unknown 由 allow_unknown 决定;occupied 与
+        // 越界不可走。A* 与路径后处理共用这一条规则。
+        [[nodiscard]] bool is_traversable(GridCoord c, bool allow_unknown) const noexcept;
+
         [[nodiscard]] GridCoord world_to_grid(const Eigen::Vector2d& p) const noexcept;
         [[nodiscard]] Eigen::Vector2d grid_to_world(GridCoord c) const noexcept;
 

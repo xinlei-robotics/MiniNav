@@ -1,0 +1,8 @@
+# apartment — 真实尺度平面图(由 scripts/v4/gen_floorplan.py 从 maps/src/apartment.toml 生成)。
+# 10 x 7 m,200x140 cell。P5 二进制 PGM。
+image: apartment.pgm
+resolution: 0.05
+origin: [0.0, 0.0, 0.0]
+occupied_thresh: 0.65
+free_thresh: 0.25
+negate: 0

@@ -122,6 +122,8 @@ add_executable(planning_tests
         planning/map_io_tests.cpp
         planning/inflation_tests.cpp
         planning/astar_tests.cpp
+        planning/path_smoothing_tests.cpp
+        planning/floorplan_map_tests.cpp
 )
 
 target_link_libraries(planning_tests
@@ -288,6 +290,11 @@ mininav_add_golden_test(plan_office plan_office.csv
 mininav_add_golden_test(plan_office500 plan_office500.csv
         plan --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
         --config config/planner.yaml)
+
+# 路径后处理(V4):同一规划 + 首尾替换 + 视线捷径。
+mininav_add_golden_test(plan_office500_smooth plan_office500_smooth.csv
+        plan --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
+        --config config/planner.yaml --smooth)
 
 # 刻意更新基线:cmake --build <build-dir> --target update_golden
 # 不属于 all;更新 golden 的 PR 必须在描述里写明原因。
