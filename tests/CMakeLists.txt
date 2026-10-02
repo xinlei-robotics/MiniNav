@@ -137,3 +137,106 @@ gtest_discover_tests(viz_tests
         PROPERTIES
         LABELS "viz"
 )
+
+# ------------------------------------------------------------------
+# regression: golden CSV 回归护栏
+#
+# 端到端地跑 sim,把产出的 CSV 与 tests/golden/ 下提交的基线逐字段比较
+# (规则见 tools/csv_compare.ixx 与 golden/README.md)。每个用例是一对 CTest:
+#   regression.sim.<name>     运行 sim,FIXTURES_SETUP
+#   regression.golden.<name>  csv_compare 比较,FIXTURES_REQUIRED
+# 两者都带 regression 标签;单跑比较用例时 CTest 会自动带上它的 fixture。
+# ------------------------------------------------------------------
+add_library(csv_compare_lib STATIC)
+
+target_sources(csv_compare_lib
+        PRIVATE
+        tools/csv_compare.cpp
+
+        PUBLIC
+        FILE_SET CXX_MODULES FILES
+        tools/csv_compare.ixx
+)
+
+set_property(TARGET csv_compare_lib PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(csv_compare_lib PROPERTIES LINKER_LANGUAGE CXX)
+mininav_set_warnings(csv_compare_lib)
+
+add_executable(csv_compare tools/csv_compare_main.cpp)
+target_link_libraries(csv_compare PRIVATE csv_compare_lib)
+set_property(TARGET csv_compare PROPERTY CXX_SCAN_FOR_MODULES ON)
+mininav_set_warnings(csv_compare)
+
+add_executable(csv_compare_tests tools/csv_compare_tests.cpp)
+target_link_libraries(csv_compare_tests PRIVATE csv_compare_lib GTest::gtest_main)
+set_property(TARGET csv_compare_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(csv_compare_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(csv_compare_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "regression"
+)
+
+set(MININAV_GOLDEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/golden")
+set(MININAV_GOLDEN_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/golden_out")
+
+# 每次回归前清空上一轮产出:sim 若没写出文件,比较端不会误用旧 CSV。
+add_test(NAME regression.clean
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${MININAV_GOLDEN_OUT_DIR}")
+set_tests_properties(regression.clean PROPERTIES
+        FIXTURES_SETUP golden_clean
+        LABELS "regression")
+
+# update_golden 目标的命令,由 mininav_add_golden_test 逐条追加。
+set(_mininav_golden_update_commands "")
+
+# mininav_add_golden_test(<name> <golden-file> <sim args...>)
+#   sim 在源码根目录运行,地图等路径用相对路径写(它们会进 CSV 头部元数据,
+#   绝对路径会让基线依赖于检出位置)。--no-viz 与 --out 由本函数追加。
+function(mininav_add_golden_test name golden_file)
+    set(out "${MININAV_GOLDEN_OUT_DIR}/${golden_file}")
+
+    add_test(NAME regression.sim.${name}
+            COMMAND $<TARGET_FILE:sim> ${ARGN} --no-viz --out "${out}"
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    set_tests_properties(regression.sim.${name} PROPERTIES
+            FIXTURES_REQUIRED golden_clean
+            FIXTURES_SETUP golden_${name}
+            LABELS "regression")
+
+    add_test(NAME regression.golden.${name}
+            COMMAND $<TARGET_FILE:csv_compare> "${MININAV_GOLDEN_DIR}/${golden_file}" "${out}")
+    set_tests_properties(regression.golden.${name} PROPERTIES
+            FIXTURES_REQUIRED golden_${name}
+            LABELS "regression")
+
+    set(_mininav_golden_update_commands ${_mininav_golden_update_commands}
+            COMMAND $<TARGET_FILE:sim> ${ARGN} --no-viz --out "${MININAV_GOLDEN_DIR}/${golden_file}"
+            PARENT_SCOPE)
+endfunction()
+
+# EKF 模式:三档噪声各一条(high-noise 下在线 bias 估计会发散,正好锁住这条路径)。
+mininav_add_golden_test(ekf_default_seed42 ekf_default_seed42.csv
+        --seed 42 --preset default)
+mininav_add_golden_test(ekf_high_noise_seed7 ekf_high_noise_seed7.csv
+        --seed 7 --preset high-noise)
+mininav_add_golden_test(ekf_low_noise_seed3 ekf_low_noise_seed3.csv
+        --seed 3 --preset low-noise)
+
+# 规划模式:手画 office 与 500×500 的 office500(docs/v3_summary.md §7.1 的命令)。
+mininav_add_golden_test(plan_office plan_office.csv
+        --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35
+        --config config/planner.yaml)
+mininav_add_golden_test(plan_office500 plan_office500.csv
+        --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
+        --config config/planner.yaml)
+
+# 刻意更新基线:cmake --build <build-dir> --target update_golden
+# 不属于 all;更新 golden 的 PR 必须在描述里写明原因。
+add_custom_target(update_golden
+        ${_mininav_golden_update_commands}
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        COMMENT "Regenerating golden CSVs in tests/golden/ (state the reason in the PR)"
+        VERBATIM)
+add_dependencies(update_golden sim)

@@ -39,6 +39,16 @@
       "cacheVariables": {
         "RERUN_ENABLED": "OFF"
       }
+    },
+    {
+      "name": "ci-release",
+      "displayName": "CI: Clang 18 + Ninja (Release, no rerun)",
+      "description": "Used by GitHub Actions CI. Inherits clang18-release so the Release-only timing tests and the golden regression run under optimization.",
+      "inherits": "clang18-release",
+      "binaryDir": "${sourceDir}/build/ci-release",
+      "cacheVariables": {
+        "RERUN_ENABLED": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -56,6 +66,11 @@
       "name": "build-ci-debug",
       "displayName": "Build CI Debug",
       "configurePreset": "ci-debug"
+    },
+    {
+      "name": "build-ci-release",
+      "displayName": "Build CI Release",
+      "configurePreset": "ci-release"
     }
   ],
   "testPresets": [
@@ -72,9 +87,33 @@
       }
     },
     {
+      "name": "test-release",
+      "displayName": "Test Release",
+      "configurePreset": "clang18-release",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "stopOnFailure": false
+      }
+    },
+    {
       "name": "test-ci-debug",
       "displayName": "Test CI Debug",
       "configurePreset": "ci-debug",
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "default"
+      },
+      "execution": {
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "test-ci-release",
+      "displayName": "Test CI Release",
+      "configurePreset": "ci-release",
       "output": {
         "outputOnFailure": true,
         "verbosity": "default"
