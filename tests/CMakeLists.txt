@@ -146,6 +146,33 @@ gtest_discover_tests(planning_tests
 )
 
 # ------------------------------------------------------------------
+# control 模块的测试(Pure Pursuit + 平滑器 + 到达 / 卡住判定 + 配置解析)
+# pure_pursuit_analytic_tests 用闭环仿真对照 docs/v4_plan.md §3 的解析结论。
+# ------------------------------------------------------------------
+add_executable(control_tests
+        control/pure_pursuit_tests.cpp
+        control/pure_pursuit_analytic_tests.cpp
+        control/velocity_smoother_tests.cpp
+        control/goal_checker_tests.cpp
+        control/controller_config_tests.cpp
+)
+
+target_link_libraries(control_tests
+        PRIVATE
+        control
+        GTest::gtest_main
+)
+
+set_property(TARGET control_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(control_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(control_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "control"
+)
+
+# ------------------------------------------------------------------
 # viz 模块的测试(gmock:用 MockVizSink 隔离 Rerun 后端)
 # ------------------------------------------------------------------
 add_executable(viz_tests
