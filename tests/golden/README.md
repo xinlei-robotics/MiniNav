@@ -7,13 +7,13 @@ planner behavior shows up as a failing `regression.golden.*` test.
 
 ## Cases
 
-| File                       | Mode     | Arguments                                                                                                  |
+| File                       | Mode     | `sim` arguments                                                                                            |
 |----------------------------|----------|------------------------------------------------------------------------------------------------------------|
-| `ekf_default_seed42.csv`   | EKF      | `--seed 42 --preset default`                                                                               |
-| `ekf_high_noise_seed7.csv` | EKF      | `--seed 7 --preset high-noise`                                                                             |
-| `ekf_low_noise_seed3.csv`  | EKF      | `--seed 3 --preset low-noise`                                                                              |
-| `plan_office.csv`          | Planning | `--map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --config config/planner.yaml`                   |
-| `plan_office500.csv`       | Planning | `--map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875 --config config/planner.yaml`          |
+| `ekf_default_seed42.csv`   | EKF      | `ekf --seed 42 --preset default`                                                                           |
+| `ekf_high_noise_seed7.csv` | EKF      | `ekf --seed 7 --preset high-noise`                                                                         |
+| `ekf_low_noise_seed3.csv`  | EKF      | `ekf --seed 3 --preset low-noise`                                                                          |
+| `plan_office.csv`          | Planning | `plan --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --config config/planner.yaml`              |
+| `plan_office500.csv`       | Planning | `plan --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875 --config config/planner.yaml`     |
 
 Every case also gets `--no-viz --out <file>`, and `sim` runs from the
 repository root so that relative map paths, which are written into the CSV

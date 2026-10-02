@@ -7,12 +7,19 @@ add_executable(core_tests
         core/trajectory_tests.cpp
         core/types_tests.cpp
         core/random_tests.cpp
+        core/path_tests.cpp
+        core/robot_description_tests.cpp
 )
 
 target_link_libraries(core_tests
         PRIVATE
         core
         GTest::gtest_main
+)
+
+# robot_description_tests 通过 PROJECT_ROOT_DIR 读取仓库里的 config/robot.yaml。
+target_compile_definitions(core_tests PRIVATE
+        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 set_property(TARGET core_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
@@ -50,6 +57,28 @@ gtest_discover_tests(sensors_tests
 )
 
 # ------------------------------------------------------------------
+# simulation 模块的测试(被控对象 Plant + 噪声档位表)
+# ------------------------------------------------------------------
+add_executable(simulation_tests
+        simulation/plant_tests.cpp
+)
+
+target_link_libraries(simulation_tests
+        PRIVATE
+        simulation
+        GTest::gtest_main
+)
+
+set_property(TARGET simulation_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
+set_target_properties(simulation_tests PROPERTIES LINKER_LANGUAGE CXX)
+
+gtest_discover_tests(simulation_tests
+        DISCOVERY_TIMEOUT 300
+        PROPERTIES
+        LABELS "simulation"
+)
+
+# ------------------------------------------------------------------
 # localization 模块的测试
 # ------------------------------------------------------------------
 add_executable(localization_tests
@@ -63,6 +92,7 @@ add_executable(localization_tests
         localization/ekf_fusion_rmse_tests.cpp
         localization/ekf_bias_observability_tests.cpp
         localization/ekf_nis_tests.cpp
+        localization/ekf_pipeline_tests.cpp
 )
 
 target_link_libraries(localization_tests
@@ -191,7 +221,7 @@ set_tests_properties(regression.clean PROPERTIES
 # update_golden 目标的命令,由 mininav_add_golden_test 逐条追加。
 set(_mininav_golden_update_commands "")
 
-# mininav_add_golden_test(<name> <golden-file> <sim args...>)
+# mininav_add_golden_test(<name> <golden-file> <subcommand> <sim args...>)
 #   sim 在源码根目录运行,地图等路径用相对路径写(它们会进 CSV 头部元数据,
 #   绝对路径会让基线依赖于检出位置)。--no-viz 与 --out 由本函数追加。
 function(mininav_add_golden_test name golden_file)
@@ -218,18 +248,18 @@ endfunction()
 
 # EKF 模式:三档噪声各一条(high-noise 下在线 bias 估计会发散,正好锁住这条路径)。
 mininav_add_golden_test(ekf_default_seed42 ekf_default_seed42.csv
-        --seed 42 --preset default)
+        ekf --seed 42 --preset default)
 mininav_add_golden_test(ekf_high_noise_seed7 ekf_high_noise_seed7.csv
-        --seed 7 --preset high-noise)
+        ekf --seed 7 --preset high-noise)
 mininav_add_golden_test(ekf_low_noise_seed3 ekf_low_noise_seed3.csv
-        --seed 3 --preset low-noise)
+        ekf --seed 3 --preset low-noise)
 
 # 规划模式:手画 office 与 500×500 的 office500(docs/v3_summary.md §7.1 的命令)。
 mininav_add_golden_test(plan_office plan_office.csv
-        --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35
+        plan --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35
         --config config/planner.yaml)
 mininav_add_golden_test(plan_office500 plan_office500.csv
-        --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
+        plan --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
         --config config/planner.yaml)
 
 # 刻意更新基线:cmake --build <build-dir> --target update_golden

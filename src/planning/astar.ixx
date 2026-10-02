@@ -6,6 +6,7 @@ module;
 export module mininav.planning.astar;
 
 import mininav.core.types;
+import mininav.core.path;
 import mininav.planning.grid_types;
 import mininav.planning.occupancy_grid;
 

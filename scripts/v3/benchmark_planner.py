@@ -3,7 +3,7 @@
 benchmark_planner.py — 规划耗时基准(对齐里程碑 200×200 ≤ 50ms,Release build)。
 
 为每个尺寸 N 生成一张 N×N 的程序化测试地图(确定性:固定 numpy 种子的随机
-障碍 + 保证起止 free + 保证连通的"安全走廊"),反复驱动 `sim --map ... --no-viz`,
+障碍 + 保证起止 free + 保证连通的"安全走廊"),反复驱动 `sim plan --map ... --no-viz`,
 从 stdout 的 `plan_time_ms=` 解析耗时,聚合成分布。
 
 产出:
@@ -67,7 +67,7 @@ def run_once(sim_bin: Path, map_yaml: Path, n: int, out_csv: Path) -> tuple[floa
     res = 0.05
     start = f"{1.5 * res},{1.5 * res}"
     goal = f"{(n - 1.5) * res},{(n - 1.5) * res}"
-    cmd = [str(sim_bin), "--map", str(map_yaml), "--start", start, "--goal", goal,
+    cmd = [str(sim_bin), "plan", "--map", str(map_yaml), "--start", start, "--goal", goal,
            "--connectivity", "8", "--heuristic", "octile",
            "--inflation-radius", "0.0", "--no-viz", "--out", str(out_csv)]
     res_proc = subprocess.run(cmd, check=True, capture_output=True, text=True)

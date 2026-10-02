@@ -261,8 +261,8 @@ GPS 或 scan matching)。
 
 ```bash
 # 单次运行(三轨迹 + 全部 per-run 图),default preset,seed 42:
-build/clang18-debug/sim --no-viz --seed 42 --preset default --out data/traj.csv
-build/clang18-debug/sim --no-viz --seed 42 --preset default --no-bias --out data/traj_nobias.csv
+build/clang18-debug/sim ekf --no-viz --seed 42 --preset default --out data/traj.csv
+build/clang18-debug/sim ekf --no-viz --seed 42 --preset default --no-bias --out data/traj_nobias.csv
 python scripts/v2/analyze_ekf.py --input data/traj.csv --ekf-no-bias data/traj_nobias.csv
 
 # 协方差椭圆演化(静态 + 几何 + 动画):

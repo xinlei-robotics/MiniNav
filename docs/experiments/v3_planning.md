@@ -189,8 +189,8 @@ V3 与 V0–V2 的一个区别:A\* 是纯确定性算法,不消耗 RNG。因此�
 为空。
 
 ```
-sim --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --no-viz --out a.csv
-sim --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --no-viz --out b.csv
+sim plan --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --no-viz --out a.csv
+sim plan --map maps/office.yaml --start 0.15,0.15 --goal 1.85,1.35 --no-viz --out b.csv
 diff a.csv b.csv     # 空 diff ✅
 ```
 
@@ -234,7 +234,7 @@ V5 的 ROS 2 / Nav2 集成铺好底座;`OccupancyGrid` 是未来 scan matching /
 cmake --preset clang18-release && cmake --build --preset build-release -j
 
 # 单次规划 + 可视化 + path.csv
-./build/clang18-release/sim --map maps/office.yaml --start 0.15,0.15 \
+./build/clang18-release/sim plan --map maps/office.yaml --start 0.15,0.15 \
     --goal 1.85,1.35 --config config/planner.yaml --out data/path.csv
 
 # 发表用静态图
@@ -246,7 +246,7 @@ python scripts/v3/benchmark_planner.py --sizes 50 100 200 --trials 12
 
 # 复杂大图案例(500×500 楼宇平面):生成 -> 规划 -> 出图
 python scripts/v3/gen_office500.py
-./build/clang18-release/sim --map maps/office500.yaml --start 1.175,1.175 \
+./build/clang18-release/sim plan --map maps/office500.yaml --start 1.175,1.175 \
     --goal 23.875,23.875 --config config/planner.yaml --out data/path500.csv
 python scripts/v3/plot_plan.py --map maps/office500.yaml --path data/path500.csv
 
@@ -262,7 +262,7 @@ python scripts/v3/optimality_check.py \
     --goal-of office=1.85,1.35 maze=0.95,0.95 room=0.85,0.65 --start auto
 
 # 确定性回归(同输入逐字节一致)
-./build/clang18-release/sim --map maps/office.yaml --goal 1.85,1.35 --no-viz --out /tmp/a.csv
-./build/clang18-release/sim --map maps/office.yaml --goal 1.85,1.35 --no-viz --out /tmp/b.csv
+./build/clang18-release/sim plan --map maps/office.yaml --goal 1.85,1.35 --no-viz --out /tmp/a.csv
+./build/clang18-release/sim plan --map maps/office.yaml --goal 1.85,1.35 --no-viz --out /tmp/b.csv
 diff /tmp/a.csv /tmp/b.csv     # 应空 diff
 ```

@@ -4,7 +4,7 @@ optimality_check.py — A* 路径长度 vs Dijkstra ground-truth 偏差。
 
 对每张测试地图,在 Python 端复刻 C++ A* 的栅格、步代价(直走 1 / 对角 √2)、
 8 连通防穿角规则,跑一遍 **Dijkstra**(无启发,保证最优)拿到 ground-truth
-最短路长度;再驱动 `sim` 拿 A* 的实际路径长度,比较二者偏差。A* 的启发式由
+最短路长度;再驱动 `sim plan` 拿 A* 的实际路径长度,比较二者偏差。A* 的启发式由
 `--heuristic` 显式指定(默认 octile,与 config/planner.yaml 一致),不依赖 sim
 的内置默认值。
 
@@ -95,7 +95,7 @@ def dijkstra_length(grid: Grid, start, goal, connectivity: int,
 def run_astar(sim_bin: Path, map_yaml: Path, start: str, goal: str,
               connectivity: int, heuristic: str, out_csv: Path) -> dict:
     cmd = [
-        str(sim_bin), "--map", str(map_yaml), "--start", start, "--goal", goal,
+        str(sim_bin), "plan", "--map", str(map_yaml), "--start", start, "--goal", goal,
         "--connectivity", str(connectivity), "--heuristic", heuristic,
         "--inflation-radius", "0.0", "--no-viz", "--out", str(out_csv),
     ]
