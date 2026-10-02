@@ -51,7 +51,7 @@ namespace mininav::apps
         using simulation::NoisePreset;
 
         // ---- 仿真时间 ----------------------------------------------------------
-        constexpr double kDt = 0.01;
+        constexpr double kDt = kSimDt;
         constexpr double kTotalTime = 20.0;
         constexpr std::size_t kStepCount =
             static_cast<std::size_t>(kTotalTime / kDt) + 1;
@@ -68,18 +68,6 @@ namespace mininav::apps
         [[nodiscard]] ekf::Integrator integrator_from_name(const std::string_view name) noexcept
         {
             return name == "euler" ? ekf::Integrator::Euler : ekf::Integrator::Rk4;
-        }
-
-        [[nodiscard]] std::uint64_t resolve_seed(const std::optional<std::uint64_t> requested)
-        {
-            if (requested.has_value())
-            {
-                return *requested;
-            }
-            std::random_device rd;
-            const auto hi = static_cast<std::uint64_t>(rd());
-            const auto lo = static_cast<std::uint64_t>(rd());
-            return (hi << 32) ^ lo;
         }
 
         // ===================================================================
@@ -109,31 +97,6 @@ namespace mininav::apps
             }
         };
 
-        // EKF 的 Q / R 由同一噪声档位推导。Q 旋钮: (α₁..₄, q_bias_omega) 整体乘 q_scale
-        // (只缩放 EKF 的 Q, 不动真实噪声)。--no-bias 强制 q_bias_omega = 0 → IMU 走无
-        // bias 兼容路径。
-        [[nodiscard]] ekf::EkfPipelineConfig make_pipeline_config(const RobotDescription& robot,
-                                                                  const EkfRunConfig& cfg)
-        {
-            return ekf::EkfPipelineConfig{
-                .encoder = EncoderNoiseParams{
-                    .sigma_slip = cfg.preset.slip_sigma,
-                    .distance_per_tick = robot.distance_per_tick(),
-                    .wheel_base = robot.wheel_base,
-                },
-                .sigma_imu = cfg.preset.sigma_imu,
-                .r_scale = cfg.r_scale,
-                .process = ekf::ProcessNoiseParams{
-                    .alpha1 = cfg.preset.alpha1 * cfg.q_scale,
-                    .alpha2 = cfg.preset.alpha2 * cfg.q_scale,
-                    .alpha3 = cfg.preset.alpha3 * cfg.q_scale,
-                    .alpha4 = cfg.preset.alpha4 * cfg.q_scale,
-                    .q_bias_omega = cfg.bias_on ? cfg.preset.q_bias_omega * cfg.q_scale : 0.0,
-                },
-                .integrator = cfg.integrator,
-            };
-        }
-
         // ===================================================================
         // EkfSimulation: 每次 step 推进一帧并返回该帧的 SimState 快照(其中
         // truth / odom / ekf 均为推进前的 prior belief, NIS 为本帧 update 的产物)。
@@ -151,7 +114,16 @@ namespace mininav::apps
                       },
                       Pose2D{0.0, 0.0, 0.0}
                   },
-                  pipeline_{make_pipeline_config(robot, cfg), Pose2D{0.0, 0.0, 0.0}}
+                  pipeline_{
+                      make_pipeline_config(robot, cfg.preset,
+                                           EkfTuning{
+                                               .q_scale = cfg.q_scale,
+                                               .r_scale = cfg.r_scale,
+                                               .bias_on = cfg.bias_on,
+                                               .integrator = cfg.integrator,
+                                           }),
+                      Pose2D{0.0, 0.0, 0.0}
+                  }
             {
             }
 

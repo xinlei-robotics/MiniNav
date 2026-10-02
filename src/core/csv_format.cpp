@@ -80,4 +80,30 @@ namespace mininav
 
         return os.str();
     }
+
+    // -------------------------------------------------------------------------
+    // NavStep: SimState 的 29 列之后追加 12 列导航诊断。regime 是文本列。
+    // -------------------------------------------------------------------------
+    std::string csv_header(const NavStep&)
+    {
+        return csv_header(SimState{}) + ","
+            "act_v,act_w,"
+            "lookahead_x,lookahead_y,lookahead_dist,curvature,regime,"
+            "e_ctrl,e_true,e_est,arclength,clearance";
+    }
+
+    std::string csv_row(const NavStep& record)
+    {
+        const NavDiagnostics& nav = record.nav;
+        std::ostringstream os;
+        configure_stream(os);
+        os << csv_row(record.sim) << ','
+            << nav.actuator.v() << ',' << nav.actuator.w() << ','
+            << nav.lookahead.x() << ',' << nav.lookahead.y() << ','
+            << nav.lookahead_dist << ',' << nav.curvature << ','
+            << nav.regime << ','
+            << nav.e_ctrl << ',' << nav.e_true << ',' << nav.e_est << ','
+            << nav.arclength << ',' << nav.clearance;
+        return os.str();
+    }
 }

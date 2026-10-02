@@ -1,0 +1,9 @@
+# 故意激进:膨胀只到车体外接圆、固定 0.6 m 的 look-ahead、不做曲率限速、0.5 m/s。
+# 过门转弯时切角远超裕度,用来验证碰撞检测(真值车体 vs 原始地图)确实会触发。
+planner:
+  inflation_radius: 0.14
+controller:
+  desired_linear_vel: 0.5
+  use_velocity_scaled_lookahead: false
+  lookahead_dist: 0.6
+  use_curvature_regulation: false

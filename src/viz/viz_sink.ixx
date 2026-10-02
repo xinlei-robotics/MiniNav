@@ -62,5 +62,17 @@ export namespace mininav
         virtual void log_line_strip_static(std::string_view entity_path,
                                            const std::vector<Eigen::Vector2d>& points,
                                            std::array<std::uint8_t, 3> color) = 0;
+
+        // ---- 每帧几何原语(V4)-------------------------------------------------
+        // 与上面两条相同,但打在当前时间游标上:随时间变化的几何(look-ahead 点、
+        // 追踪圆弧、协方差椭圆)每帧整体替换。
+        virtual void log_points(std::string_view entity_path,
+                                const std::vector<Eigen::Vector2d>& points,
+                                std::array<std::uint8_t, 3> color,
+                                float radius) = 0;
+
+        virtual void log_line_strip(std::string_view entity_path,
+                                    const std::vector<Eigen::Vector2d>& points,
+                                    std::array<std::uint8_t, 3> color) = 0;
     };
 }

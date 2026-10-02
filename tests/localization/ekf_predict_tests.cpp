@@ -152,3 +152,51 @@ TEST(EkfPredict, InitialCovarianceMatchesDesignedSigma0)
     EXPECT_DOUBLE_EQ(Sigma0(kBiasOmega, kBiasOmega), 1e-2);
     EXPECT_TRUE(is_symmetric_positive_definite(Sigma0, 1e-12));
 }
+
+// --- 未建模的速度变化(q_dv / q_dw,V4 闭环)--------------------------------------
+
+TEST(EkfProcessNoise, UnmodeledVelocityChangeAddsToVelocityDiagonal)
+{
+    Vec6 mu = Vec6::Zero();
+    mu(kV) = 0.3;
+    mu(kOmega) = 0.5;
+    ProcessNoiseParams p = default_preset_noise();
+    const Mat6 base = process_noise_Q(mu, p);
+    p.q_dv = 2.5e-5;
+    p.q_dw = 9e-4;
+    const Mat6 with_dv = process_noise_Q(mu, p);
+    EXPECT_DOUBLE_EQ(with_dv(kV, kV), base(kV, kV) + 2.5e-5);
+    EXPECT_DOUBLE_EQ(with_dv(kOmega, kOmega), base(kOmega, kOmega) + 9e-4);
+    EXPECT_EQ(with_dv(kPx, kPx), base(kPx, kPx));
+    EXPECT_EQ(with_dv(kBiasOmega, kBiasOmega), base(kBiasOmega, kBiasOmega));
+}
+
+// 恒速模型 + 无执行噪声(α = 0)时 Q 只剩 0:静止一段时间后 v 的方差收敛到 0,
+// 起步加速时估计被"冻住"。q_dv = (a_max·dt)² 让滤波器跟得上 0.5 m/s² 的加速。
+TEST(EkfProcessNoise, UnmodeledVelocityChangeLetsFilterFollowAcceleration)
+{
+    constexpr double dt = 0.01;
+    constexpr double accel = 0.5;
+    const Eigen::Matrix2d R = Eigen::Vector2d{1e-4, 1e-4}.asDiagonal();  // σ = 1 cm/s
+
+    const auto final_velocity_error = [&](const ProcessNoiseParams& params)
+    {
+        Ekf ekf{make_initial_ekf_state(), params};
+        double v_true = 0.0;
+        for (int k = 0; k < 260; ++k)  // 2 s 静止,随后 0.6 s 以 0.5 m/s² 加速到 0.3 m/s
+        {
+            if (k >= 200)
+            {
+                v_true += accel * dt;
+            }
+            ekf.predict(dt);
+            (void)ekf.update_encoder(Eigen::Vector2d{v_true, 0.0}, R);
+        }
+        return std::abs(ekf.mu()(kV) - v_true);
+    };
+
+    const double frozen = final_velocity_error(ProcessNoiseParams{});
+    const double tracking = final_velocity_error(ProcessNoiseParams{.q_dv = (accel * dt) * (accel * dt)});
+    EXPECT_GT(frozen, 0.1);     // 几乎没跟上:0.3 m/s 里落后一大半
+    EXPECT_LT(tracking, 0.02);
+}

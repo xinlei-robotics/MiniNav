@@ -2,6 +2,10 @@ module;
 
 #include <Eigen/Core>
 
+#include <cstdint>
+#include <string>
+#include <utility>
+
 export module mininav.core.types;
 
 export namespace mininav
@@ -120,5 +124,42 @@ export namespace mininav
         // 本步 encoder / IMU 更新的 NIS;理论上分别服从自由度 2 / 1 的 χ² 分布。
         double nis_encoder{0.0};
         double nis_imu{0.0};
+    };
+
+    // ---------------------------------------------------------------------------
+    // NavDiagnostics: 闭环导航(sim nav)一步的控制与评估量。
+    //
+    // 误差分解(docs/v4_plan.md §3.6),P 为平滑后的路径、p_in 为控制器的输入位姿
+    // (EKF 估计,或 oracle 实验中的真值):
+    //   e_ctrl = dist(p_in, P)          控制器看得到、也只对它负责的误差
+    //   e_true = dist(p_true, P)        真值横向误差
+    //   e_est  = ‖p_true − p_in‖        估计误差;dist 是 1-Lipschitz 的,故 e_true ≤ e_ctrl + e_est
+    // look-ahead / 曲率 / 工况来自最近一个控制节拍(两拍之间零阶保持)。
+    // ---------------------------------------------------------------------------
+    struct NavDiagnostics
+    {
+        Twist2D actuator;                                       // 电机输出 u(饱和 + 滞后后、执行噪声前)
+        Eigen::Vector2d lookahead{Eigen::Vector2d::Zero()};     // look-ahead 点(world)
+        double lookahead_dist{0.0};                             // 本拍 L_d
+        double curvature{0.0};                                  // 转向曲率 κ
+        std::string regime{"stopped"};                          // 控制工况名
+        std::int32_t regime_code{0};                            // 工况编号(画时序图用)
+        double e_ctrl{0.0};
+        double e_true{0.0};
+        double e_est{0.0};
+        double arclength{0.0};                                  // 控制器的路径进度
+        double clearance{0.0};                                  // 真值车体外接圆到最近障碍的净空(截断)
+
+        // 控制器本拍的输入位姿(EKF 估计或真值),画追踪圆弧用。不写进 CSV:它与
+        // ekf_* 或 truth_* 列重复,取哪一组由 nav.csv 头部的 controller_input 决定。
+        Pose2D control_pose;
+    };
+
+    // NavStep: nav.csv 的一行 = SimState 的全部列 + 导航诊断量。用组合而不是新的
+    // SimStateV4,沿用单一 SimState 的约定;CSV / Rerun 通过 ADL 重载扩展。
+    struct NavStep
+    {
+        SimState sim;
+        NavDiagnostics nav;
     };
 }

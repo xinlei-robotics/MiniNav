@@ -49,64 +49,6 @@ namespace mininav::apps
             return Heuristic::Octile; // CLI 已用 IsMember 校验
         }
 
-        [[nodiscard]] std::string heuristic_name_of(const planning::Heuristic h)
-        {
-            using planning::Heuristic;
-            switch (h)
-            {
-            case Heuristic::Manhattan: return "manhattan";
-            case Heuristic::Euclidean: return "euclidean";
-            case Heuristic::Octile: return "octile";
-            }
-            return "euclidean";
-        }
-
-        // 栅格中心的 world 坐标(默认起点)。origin 是左下角,故 +半幅宽高。
-        [[nodiscard]] Eigen::Vector2d grid_center(const planning::OccupancyGrid& g)
-        {
-            return g.origin() + Eigen::Vector2d{
-                       g.width() * g.resolution() * 0.5,
-                       g.height() * g.resolution() * 0.5
-                   };
-        }
-
-        // 把原图占据 cell 与"膨胀新增"cell 分开收集,供 viz 的安全裕度展示。
-        [[nodiscard]] PlanScene build_plan_scene(const planning::OccupancyGrid& grid,
-                                                 const planning::OccupancyGrid& inflated,
-                                                 const Path& path,
-                                                 const Pose2D& start, const Pose2D& goal)
-        {
-            using namespace planning;
-            PlanScene scene;
-            scene.start = start;
-            scene.goal = goal;
-            scene.cell_radius = static_cast<float>(grid.resolution() * 0.5);
-
-            for (int y = 0; y < grid.height(); ++y)
-            {
-                for (int x = 0; x < grid.width(); ++x)
-                {
-                    const GridCoord c{x, y};
-                    const Eigen::Vector2d w = grid.grid_to_world(c);
-                    if (grid.at(c) == kOccupied)
-                    {
-                        scene.obstacle_cells.push_back(w);
-                    }
-                    else if (inflated.at(c) == kOccupied)
-                    {
-                        scene.inflated_cells.push_back(w); // 膨胀新增的安全裕度
-                    }
-                }
-            }
-
-            scene.path.reserve(path.poses.size());
-            for (const Pose2D& p : path.poses)
-            {
-                scene.path.emplace_back(p.x(), p.y());
-            }
-            return scene;
-        }
-
         // --smooth 时写进 path.csv 头部的附加信息:后处理方式与原始 A* 路径的规模。
         struct SmoothingInfo
         {
