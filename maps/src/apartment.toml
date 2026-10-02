@@ -1,0 +1,121 @@
+# apartment — 真实尺度的室内平面图(V4 闭环实验用),由 scripts/v4/gen_floorplan.py
+# 生成 maps/apartment.{pgm,yaml}。
+#
+# ⚠ 占位布局:按常见公寓尺寸画的,不是实测。V6 实车要跑的房间量好尺寸后,改这里
+#   的数字再运行生成器即可替换(地图名与场景坐标可保持不变),这样 sim-to-real 可以
+#   在同一张图上对照。
+#
+# 坐标:米,原点在地图左下角(与 map.yaml 的 origin 约定一致),x 向右、y 向上。
+# 矩形写作 [x0, y0, x1, y1],覆盖格心落在 [x0, x1) × [y0, y1) 内的 cell。
+# 栅格化顺序:外墙 → walls(占据)→ doors(挖开)→ furniture(占据)。
+#
+# 尺寸约束(r_infl = 0.25 m 时仍连通):门宽 ≥ 0.8 m、走廊 ≥ 1.0 m、家具之间的
+# 通道 ≥ 0.8 m —— 0.8 m 的缺口膨胀后还剩约 0.3 m 的可行走带。
+#
+# 布局(10 × 7 m):
+#   y 4.3–7.0   卧室 1 | 卫生间 | 卧室 2
+#   y 3.0–4.2   走廊(贯通全宽,1.2 m)
+#   y 0.0–2.9   客厅 | 厨房(中岛两侧各 0.8 m 窄道)
+
+resolution = 0.05
+size = [10.0, 7.0]
+border = 0.10
+
+# ---- 隔墙(0.10 m 厚)---------------------------------------------------------
+[[walls]]
+name = "hallway south"
+rect = [0.0, 2.9, 10.0, 3.0]
+
+[[walls]]
+name = "hallway north"
+rect = [0.0, 4.2, 10.0, 4.3]
+
+[[walls]]
+name = "living | kitchen"
+rect = [5.6, 0.0, 5.7, 2.9]
+
+[[walls]]
+name = "bedroom 1 | bathroom"
+rect = [3.6, 4.3, 3.7, 7.0]
+
+[[walls]]
+name = "bathroom | bedroom 2"
+rect = [5.6, 4.3, 5.7, 7.0]
+
+# ---- 门洞 ----------------------------------------------------------------------
+[[doors]]
+name = "living"
+rect = [1.9, 2.9, 2.8, 3.0]       # 0.9 m
+
+[[doors]]
+name = "kitchen"
+rect = [7.6, 2.9, 8.5, 3.0]       # 0.9 m
+
+[[doors]]
+name = "living - kitchen"
+rect = [5.6, 1.0, 5.7, 1.9]       # 0.9 m
+
+[[doors]]
+name = "bedroom 1"
+rect = [2.4, 4.2, 3.3, 4.3]       # 0.9 m
+
+[[doors]]
+name = "bathroom"
+rect = [4.25, 4.2, 5.05, 4.3]     # 0.8 m,最窄的门
+
+[[doors]]
+name = "bedroom 2"
+rect = [6.6, 4.2, 7.5, 4.3]       # 0.9 m
+
+# ---- 家具 ----------------------------------------------------------------------
+[[furniture]]
+name = "sofa"
+rect = [0.3, 0.3, 2.3, 1.2]
+
+[[furniture]]
+name = "coffee table"
+rect = [0.9, 1.9, 1.9, 2.4]
+
+[[furniture]]
+name = "tv unit"
+rect = [3.5, 0.1, 5.2, 0.5]
+
+[[furniture]]
+name = "armchair"
+rect = [4.2, 1.6, 4.9, 2.3]
+
+[[furniture]]
+name = "kitchen counter"
+rect = [5.9, 0.1, 9.9, 0.7]
+
+[[furniture]]
+name = "kitchen island"
+rect = [6.8, 1.5, 8.6, 2.1]       # 南侧 0.8 m 窄道(到灶台),北侧 0.8 m(到走廊墙)
+
+[[furniture]]
+name = "fridge"
+rect = [9.2, 2.2, 9.9, 2.9]
+
+[[furniture]]
+name = "bed 1"
+rect = [0.1, 4.9, 1.7, 6.9]
+
+[[furniture]]
+name = "wardrobe"
+rect = [2.7, 6.3, 3.6, 6.9]
+
+[[furniture]]
+name = "bathtub"
+rect = [3.7, 6.1, 5.6, 6.9]
+
+[[furniture]]
+name = "sink"
+rect = [3.7, 4.9, 4.2, 5.5]
+
+[[furniture]]
+name = "bed 2"
+rect = [8.2, 4.9, 9.9, 6.9]
+
+[[furniture]]
+name = "desk"
+rect = [5.7, 6.3, 7.1, 6.9]

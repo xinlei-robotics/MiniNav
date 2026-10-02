@@ -4,6 +4,7 @@ module;
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -65,6 +66,12 @@ namespace mininav::planning
     bool OccupancyGrid::is_free(const GridCoord c) const noexcept
     {
         return at(c) == kFree;
+    }
+
+    bool OccupancyGrid::is_traversable(const GridCoord c, const bool allow_unknown) const noexcept
+    {
+        const std::int8_t v = at(c); // 越界 → kOccupied
+        return v == kFree || (v == kUnknown && allow_unknown);
     }
 
     GridCoord OccupancyGrid::world_to_grid(const Eigen::Vector2d& p) const noexcept

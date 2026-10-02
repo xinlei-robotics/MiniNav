@@ -280,7 +280,9 @@ mininav/
 │   ├── planner.yaml                # A* 规划器配置(V3)
 │   ├── robot.yaml                  # 机器人描述(几何 / 外形 / 执行器限幅与滞后)(V4)
 │   └── nav.yaml                    # (规划) V4:导航参数(规划 / 控制 / 到达判定)
-├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)
+├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)、
+│   │                               #   apartment(V4,真实尺度平面图)
+│   └── src/apartment.toml          # apartment 的矩形清单(墙 / 门 / 家具),gen_floorplan.py 的输入
 ├── data/                           # 运行产出(不入库):traj.csv / path.csv
 ├── docs/
 │   ├── project_overview.md         # 本文档:项目总愿景与版本路线
@@ -301,8 +303,9 @@ mininav/
 │   ├── plot_trajectory.py          # V0 出图
 │   ├── v1/analyze_drift.py         # V1 漂移分析
 │   ├── v2/                         # V2 EKF 分析(analyze_ekf / covariance / integrator / sweep)
-│   └── v3/                         # V3 规划:plot_plan / benchmark_planner / optimality_check /
-│                                   #   animate_search / gen_office500 / _mapio
+│   ├── v3/                         # V3 规划:plot_plan / benchmark_planner / optimality_check /
+│   │                               #   animate_search / gen_office500 / _mapio
+│   └── v4/                         # V4:gen_floorplan(TOML 矩形清单 → PGM + map.yaml)
 ├── results/                        # 实验产出:results/v{0,1,2,3}/ 下的 PNG / GIF
 ├── src/
 │   ├── core/                       # 运动学、类型、路径几何、机器人描述、Trajectory、CSV、随机数、积分器、日志
@@ -337,7 +340,8 @@ mininav/
 │   │   ├── occupancy_grid.{ixx,cpp}  # OccupancyGrid + world/grid 变换
 │   │   ├── map_io.{ixx,cpp}        # PGM(P2/P5)+ map.yaml 加载
 │   │   ├── inflation.{ixx,cpp}     # 欧氏距离变换 + 膨胀
-│   │   └── astar.{ixx,cpp}         # GlobalPlanner / AStarPlanner / PlanResult
+│   │   ├── astar.{ixx,cpp}         # GlobalPlanner / AStarPlanner / PlanResult
+│   │   └── path_smoothing.{ixx,cpp}  # V4:首尾替换 + 视线捷径(supercover 可通行检查)
 │   ├── viz/                        # 接口 + PIMPL 隔离 Rerun
 │   │   ├── viz_sink.{ixx,cpp}      # VizSink 抽象接口(V3)
 │   │   ├── rerun_sink.{ixx,cpp}    # RerunSink : VizSink
@@ -360,7 +364,8 @@ mininav/
 │   ├── sensors/                    # actuator / wheel_encoder / imu_model
 │   ├── simulation/                 # plant(与直接组合传感器模型逐位相同)
 │   ├── localization/               # wheel_odometry + 8 个 EKF 测试 + encoder_observation + ekf_pipeline
-│   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config
+│   ├── planning/                   # grid_types / occupancy_grid / map_io / inflation / astar / planner_config /
+│   │                               #   path_smoothing / floorplan_map(apartment 膨胀后连通)
 │   ├── viz/                        # gmock:viz_sink_log_tests
 │   ├── control/                    # pure_pursuit + 解析用例(e^−π、4.26 L、圆弧零误差、切角尺度律)/
 │   │                               #   velocity_smoother / goal_checker / controller_config

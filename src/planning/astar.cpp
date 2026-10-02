@@ -36,16 +36,7 @@ namespace mininav::planning
         [[nodiscard]] bool traversable(const OccupancyGrid& grid, const PlannerConfig& cfg,
                                        const GridCoord c)
         {
-            const std::int8_t v = grid.at(c); // 越界 → kOccupied
-            if (v == kOccupied)
-            {
-                return false;
-            }
-            if (v == kUnknown)
-            {
-                return cfg.allow_unknown;
-            }
-            return true; // kFree
+            return grid.is_traversable(c, cfg.allow_unknown);
         }
 
         [[nodiscard]] double heuristic(const Heuristic h, const GridCoord a, const GridCoord b)

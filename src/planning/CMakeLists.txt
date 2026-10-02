@@ -17,6 +17,7 @@ target_sources(planning
         map_io.cpp
         inflation.cpp
         astar.cpp
+        path_smoothing.cpp
 
         PUBLIC
         FILE_SET CXX_MODULES FILES
@@ -26,6 +27,7 @@ target_sources(planning
         map_io.ixx
         inflation.ixx
         astar.ixx
+        path_smoothing.ixx
 )
 
 target_link_libraries(planning

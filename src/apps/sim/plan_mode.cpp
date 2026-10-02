@@ -23,6 +23,7 @@ import mininav.planning.map_io;
 import mininav.planning.inflation;
 import mininav.planning.planner_config;
 import mininav.planning.astar;
+import mininav.planning.path_smoothing;
 
 // ===========================================================================
 // sim plan —— V3 的一次性全局规划。
@@ -72,7 +73,7 @@ namespace mininav::apps
         // 把原图占据 cell 与"膨胀新增"cell 分开收集,供 viz 的安全裕度展示。
         [[nodiscard]] PlanScene build_plan_scene(const planning::OccupancyGrid& grid,
                                                  const planning::OccupancyGrid& inflated,
-                                                 const planning::PlanResult& result,
+                                                 const Path& path,
                                                  const Pose2D& start, const Pose2D& goal)
         {
             using namespace planning;
@@ -98,20 +99,31 @@ namespace mininav::apps
                 }
             }
 
-            scene.path.reserve(result.path.poses.size());
-            for (const Pose2D& p : result.path.poses)
+            scene.path.reserve(path.poses.size());
+            for (const Pose2D& p : path.poses)
             {
                 scene.path.emplace_back(p.x(), p.y());
             }
             return scene;
         }
 
+        // --smooth 时写进 path.csv 头部的附加信息:后处理方式与原始 A* 路径的规模。
+        struct SmoothingInfo
+        {
+            std::string method;
+            std::size_t raw_waypoints{0};
+            double raw_length_m{0.0};
+        };
+
         // path.csv:逐字节确定(无时间戳、无 plan_time_ms)。header 嵌入 map/start/goal/
         // heuristic/connectivity/inflation_radius/success/expanded_nodes/path_length_m,
         // 一次规划自包含、可复现、可比对(docs/v3_summary.md §4.3)。
+        // written 是写入的路径(原始或平滑后);只有平滑时才多出 smoothing / raw_* 三行,
+        // 不平滑时与 V3 的格式逐字节相同。
         void write_path_csv(const fs::path& path, const std::string& map_path,
                             const planning::PlannerConfig& cfg, const Pose2D& start,
-                            const Pose2D& goal, const planning::PlanResult& result)
+                            const Pose2D& goal, const planning::PlanResult& result,
+                            const Path& written, const std::optional<SmoothingInfo>& smoothing)
         {
             if (path.has_parent_path())
             {
@@ -130,15 +142,24 @@ namespace mininav::apps
             out << "# heuristic = " << heuristic_name_of(cfg.heuristic) << '\n';
             out << "# connectivity = " << static_cast<int>(cfg.connectivity) << '\n';
             out << "# inflation_radius = " << cfg.inflation_radius << '\n';
+            if (smoothing.has_value())
+            {
+                out << "# smoothing = " << smoothing->method << '\n';
+            }
             out << "# success = " << (result.success ? 1 : 0) << '\n';
             out << "# expanded_nodes = " << result.expanded_nodes << '\n';
-            out << "# path_length_m = " << result.path.length() << '\n';
+            out << "# path_length_m = " << written.length() << '\n';
+            if (smoothing.has_value())
+            {
+                out << "# raw_waypoints = " << smoothing->raw_waypoints << '\n';
+                out << "# raw_length_m = " << smoothing->raw_length_m << '\n';
+            }
             // 注:plan_time_ms 是非确定量,刻意不入 CSV(保 path.csv 逐字节一致)。
 
             out << "idx,x,y,yaw\n";
-            for (std::size_t i = 0; i < result.path.poses.size(); ++i)
+            for (std::size_t i = 0; i < written.poses.size(); ++i)
             {
-                const Pose2D& p = result.path.poses[i];
+                const Pose2D& p = written.poses[i];
                 out << i << ',' << p.x() << ',' << p.y() << ',' << p.yaw() << '\n';
             }
         }
@@ -201,12 +222,30 @@ namespace mininav::apps
             log::warning("No path found (goal unreachable or start/goal blocked).");
         }
 
-        // 5. path.csv(确定性产出)
+        // 5. 可选的路径后处理(首尾替换 + 视线捷径),在 A* 的同一张膨胀 costmap 上。
+        Path written = result.path;
+        std::optional<SmoothingInfo> smoothing;
+        if (opts.smooth && result.success)
+        {
+            written = smooth_path(result.path, planner.costmap(), planner.config(), start, goal,
+                                  PathSmoothingConfig{});
+            smoothing = SmoothingInfo{
+                .method = cfg.cost_weight > 0.0 ? "snap_endpoints" : "snap_endpoints+shortcut",
+                .raw_waypoints = result.path.size(),
+                .raw_length_m = result.path.length(),
+            };
+            std::ostringstream sm;
+            sm << "smoothing: " << smoothing->method << " waypoints " << result.path.size() << " -> "
+                << written.size() << ", length_m " << result.path.length() << " -> " << written.length();
+            log::info(sm.str());
+        }
+
+        // 6. path.csv(确定性产出)
         const fs::path out_path = output_csv_path(opts.output, "path.csv");
-        write_path_csv(out_path, opts.map_path, cfg, start, goal, result);
+        write_path_csv(out_path, opts.map_path, cfg, start, goal, result, written, smoothing);
         log::info("Plan CSV written to " + out_path.string());
 
-        // 6. 可视化(地图 + 膨胀 + 路径 + 起止)
+        // 7. 可视化(地图 + 膨胀 + 路径 + 起止)
         std::optional<RerunSink> sink = make_sink(opts.output);
         if (!sink.has_value())
         {
@@ -215,7 +254,7 @@ namespace mininav::apps
         sink->log_axes_static("/world/origin", 0.5F);
         sink->set_time(0.0);
         const OccupancyGrid inflated = inflate(grid, cfg.inflation_radius);
-        const PlanScene scene = build_plan_scene(grid, inflated, result, start, goal);
+        const PlanScene scene = build_plan_scene(grid, inflated, written, start, goal);
         log_plan(*sink, scene, "/world");
     }
 }

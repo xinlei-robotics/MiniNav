@@ -59,6 +59,7 @@ export namespace mininav::apps
         std::optional<std::string> heuristic_name;
         std::optional<int> connectivity;
         std::optional<double> inflation_radius;
+        bool smooth{false}; // A* 之后做路径后处理(首尾替换 + 视线捷径)
         OutputOptions output;
     };
 
