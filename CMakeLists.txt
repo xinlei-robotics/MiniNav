@@ -43,13 +43,15 @@ target_sources(sim
         src/apps/sim/common.cpp
         src/apps/sim/ekf_mode.cpp
         src/apps/sim/plan_mode.cpp
+        src/apps/sim/nav_mode.cpp
 
         PRIVATE
         FILE_SET CXX_MODULES FILES
         src/apps/sim/sim.ixx
 )
 
-target_link_libraries(sim PRIVATE core viz simulation localization planning CLI11::CLI11)
+target_link_libraries(sim PRIVATE core viz simulation localization planning control
+        CLI11::CLI11 yaml-cpp::yaml-cpp)
 
 target_compile_definitions(sim PRIVATE
         PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"

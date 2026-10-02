@@ -1,0 +1,47 @@
+# nav.yaml — sim nav 的导航参数(V4 闭环)。段名与 V5 的 Nav2 参数文件一一对应:
+#   planner          → planner_server(GlobalPlanner 插件)
+#   path_smoothing   → 路径后处理(A* 台阶 → 首尾替换 + 视线捷径)
+#   controller       → controller_server 频率 + Regulated Pure Pursuit + velocity_smoother
+#   goal_checker     → SimpleGoalChecker
+#   progress_checker → SimpleProgressChecker
+# 各段严格解析:未知段 / 未知 key 加载即报错;缺失字段取默认值。
+# 默认值的推导见 docs/v4_plan.md §3、§4.6(滞后稳定性、切角预算、转角限速)。
+
+planner:
+  inflation_radius: 0.25   # m,必须 ≥ 车体外接圆半径(robot.yaml 推导 ≈ 0.136 m),否则 sim nav 拒绝运行
+  heuristic: octile
+  connectivity: 8
+  allow_unknown: false
+  cost_weight: 0.0
+
+path_smoothing:
+  snap_endpoints: true
+  shortcut: true
+
+controller:
+  control_frequency: 20.0          # Hz,必须整除 100 Hz 仿真频率;两拍之间零阶保持
+  desired_linear_vel: 0.30         # m/s
+  use_velocity_scaled_lookahead: true
+  lookahead_time: 1.0              # s,T_L ≥ 5·τ_eff(τ_eff ≈ τ + T_c/2 = 0.125 s)
+  min_lookahead: 0.10              # m,≤ m_eff / f(90°) ≈ 0.16 m
+  max_lookahead: 0.60              # m
+  lookahead_dist: 0.30             # m,仅在关闭速度自适应时使用(经典 PP 对照)
+  use_curvature_regulation: true
+  curvature_lookahead_dist: 0.40   # m,L_κ
+  regulated_min_radius: 0.60       # m,90° 转角处把速度压到 ≈ 0.10–0.14 m/s
+  approach_dist: 0.40              # m
+  min_approach_vel: 0.05           # m/s
+  use_rotate_to_heading: true
+  rotate_to_heading_angle: 0.785   # rad
+  rotate_vel: 1.0                  # rad/s
+  max_projection_search_dist: 1.0  # m
+  max_accel: 0.5                   # m/s²
+  max_angular_accel: 3.0           # rad/s²
+
+goal_checker:
+  xy_tolerance: 0.05     # m
+  yaw_tolerance: 0.10    # rad,只在目标给了朝向(--goal x,y,yaw)时检查
+
+progress_checker:
+  required_movement: 0.20  # m
+  time_allowance: 10.0     # s

@@ -1,0 +1,5 @@
+# 拼错的段名(planer):必须报错,而不是静默地用默认值。
+planner:
+  inflation_radius: 0.25
+planer:
+  inflation_radius: 0.25

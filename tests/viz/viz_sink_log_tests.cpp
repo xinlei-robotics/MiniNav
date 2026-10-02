@@ -11,6 +11,7 @@ import mininav.core.types;
 import mininav.viz.sink;
 import mininav.viz.sim_state_log;
 import mininav.viz.plan_log;
+import mininav.viz.nav_log;
 
 #include <Eigen/Core>
 
@@ -18,6 +19,7 @@ import mininav.viz.plan_log;
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -53,6 +55,14 @@ public:
                  (std::array<std::uint8_t, 3>), float),
                 (override));
     MOCK_METHOD(void, log_line_strip_static,
+                (std::string_view, (const std::vector<Eigen::Vector2d>&),
+                 (std::array<std::uint8_t, 3>)),
+                (override));
+    MOCK_METHOD(void, log_points,
+                (std::string_view, (const std::vector<Eigen::Vector2d>&),
+                 (std::array<std::uint8_t, 3>), float),
+                (override));
+    MOCK_METHOD(void, log_line_strip,
                 (std::string_view, (const std::vector<Eigen::Vector2d>&),
                  (std::array<std::uint8_t, 3>)),
                 (override));
@@ -166,3 +176,84 @@ TEST(VizPlanLog, LogPlanDrawsExpansionWhenProvided) {
 }
 
 }  // namespace
+
+// ---------------------------------------------------------------------------
+// nav_log:闭环导航(V4)的可视化下沉契约
+// ---------------------------------------------------------------------------
+
+// 静态场景 = log_plan 的全部实体 + A* 原始路径(灰色折线)。
+TEST(VizNavLog, NavSceneAddsRawPathToPlanScene) {
+    NiceMock<MockVizSink> mock;
+    mininav::NavScene scene;
+    scene.plan.path = {{0.0, 0.0}, {2.0, 1.0}};
+    scene.raw_path = {{0.0, 0.0}, {1.0, 0.0}, {2.0, 1.0}};
+
+    EXPECT_CALL(mock, log_line_strip_static(path("/world/plan/path"), _, _));
+    EXPECT_CALL(mock, log_line_strip_static(path("/world/plan/raw"), scene.raw_path, _));
+
+    mininav::log_nav_scene(mock, scene, "/world");
+}
+
+// 每帧:SimState 的全部通道 + 电机输出 + look-ahead 点 / 追踪弧 / 协方差椭圆(world 坐标,
+// 不挂在带 Transform3D 的位姿实体下)+ 五条导航时序。
+TEST(VizNavLog, NavStepRoutesNavigationChannelsOncePerFrame) {
+    NiceMock<MockVizSink> mock;
+    mininav::NavStep step{};
+    step.nav.lookahead = Eigen::Vector2d{0.3, 0.1};
+    step.nav.curvature = 2.0;
+    step.sim.ekf_cov = Eigen::Matrix<double, 6, 6>::Identity() * 1e-4;
+
+    // 兜底在前、具体在后:gmock 先匹配后声明的期望。
+    EXPECT_CALL(mock, log_pose(_, _)).Times(AnyNumber());
+    EXPECT_CALL(mock, log_twist(_, _)).Times(AnyNumber());
+    EXPECT_CALL(mock, log_scalar(_, _)).Times(4);  // SimState 自带的编码器 / odom 诊断时序
+
+    EXPECT_CALL(mock, log_pose(path("/world/robot/truth"), _));
+    EXPECT_CALL(mock, log_pose(path("/world/robot/ekf"), _));
+    EXPECT_CALL(mock, log_twist(path("/world/robot/actuator"), _));
+    EXPECT_CALL(mock, log_points(path("/world/control/lookahead"), _, _, _));
+    EXPECT_CALL(mock, log_line_strip(path("/world/control/arc"), _, _));
+    EXPECT_CALL(mock, log_line_strip(path("/world/estimate/ekf_cov"), _, _));
+    for (const char* plot : {"/plots/error/ctrl", "/plots/error/est", "/plots/error/true",
+                             "/plots/clearance", "/plots/regime"}) {
+        EXPECT_CALL(mock, log_scalar(path(plot), _));
+    }
+
+    log_to_rerun(mock, step, "/world/robot");
+}
+
+// 3σ 椭圆:对角协方差时半轴 = 3·σ;有相关项时主轴沿特征向量。
+TEST(VizNavLog, CovarianceEllipseFollowsEigenDecomposition) {
+    const auto axis_aligned =
+        mininav::covariance_ellipse(Eigen::Vector2d{1.0, 2.0}, 4e-4, 0.0, 1e-4, 3.0, 48);
+    ASSERT_EQ(axis_aligned.size(), 49u);
+    EXPECT_NEAR(axis_aligned.front().x(), 1.06, 1e-12);
+    EXPECT_NEAR(axis_aligned[12].y(), 2.03, 1e-12);  // 四分之一圈:短轴端点
+
+    // [[2, 1], [1, 2]]:λ = 3(沿 45°)与 1。
+    const auto rotated = mininav::covariance_ellipse(Eigen::Vector2d::Zero(), 2.0, 1.0, 2.0, 1.0, 48);
+    const double r = std::sqrt(3.0) / std::sqrt(2.0);
+    EXPECT_NEAR(rotated.front().x(), r, 1e-12);
+    EXPECT_NEAR(rotated.front().y(), r, 1e-12);
+}
+
+// 追踪弧从车出发、与车头相切,止于 look-ahead 点(κ = 2·y_g / d² 时该点就在圆上)。
+TEST(VizNavLog, PursuitArcEndsAtLookaheadPoint) {
+    const Pose2D pose{1.0, -1.0, 0.7};
+    const Eigen::Vector2d g_body{0.3, 0.1};
+    const double c = std::cos(pose.yaw());
+    const double s = std::sin(pose.yaw());
+    const Eigen::Vector2d target{pose.x() + c * g_body.x() - s * g_body.y(),
+                                 pose.y() + s * g_body.x() + c * g_body.y()};
+    const double kappa = 2.0 * g_body.y() / g_body.squaredNorm();
+
+    const auto arc = mininav::pursuit_arc(pose, kappa, target, 24);
+    ASSERT_EQ(arc.size(), 25u);
+    EXPECT_NEAR(arc.front().x(), pose.x(), 1e-12);
+    EXPECT_NEAR(arc.front().y(), pose.y(), 1e-12);
+    EXPECT_NEAR(arc.back().x(), target.x(), 1e-12);
+    EXPECT_NEAR(arc.back().y(), target.y(), 1e-12);
+
+    // 目标在车后方:没有追踪弧(控制器此时原地转向)。
+    EXPECT_TRUE(mininav::pursuit_arc(Pose2D{0.0, 0.0, 0.0}, 1.0, Eigen::Vector2d{-0.3, 0.1}, 24).empty());
+}

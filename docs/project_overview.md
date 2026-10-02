@@ -279,7 +279,8 @@ mininav/
 ├── config/
 │   ├── planner.yaml                # A* 规划器配置(V3)
 │   ├── robot.yaml                  # 机器人描述(几何 / 外形 / 执行器限幅与滞后)(V4)
-│   └── nav.yaml                    # (规划) V4:导航参数(规划 / 控制 / 到达判定)
+│   └── nav.yaml                    # 导航参数:planner / path_smoothing / controller / goal_checker /
+│                                   #   progress_checker 段,与 V5 的 Nav2 参数文件对应(V4)
 ├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)、
 │   │                               #   apartment(V4,真实尺度平面图)
 │   └── src/apartment.toml          # apartment 的矩形清单(墙 / 门 / 家具),gen_floorplan.py 的输入
@@ -327,7 +328,7 @@ mininav/
 │   │   └── imu_model.{ixx,cpp}     # V2 引入:gyro 白噪声 + 可漂移 bias
 │   ├── simulation/                 # 独立静态库(V4):被控对象,依赖 core + sensors
 │   │   ├── noise_presets.ixx       # 三档噪声标定(low-noise / default / high-noise)
-│   │   └── plant.{ixx,cpp}         # Plant:执行噪声 → encoder / IMU → 真值积分
+│   │   └── plant.{ixx,cpp}         # Plant:执行器动力学(饱和 + 一阶滞后)→ 执行噪声 → encoder / IMU → 真值
 │   ├── localization/               # 独立静态库:估计器
 │   │   ├── wheel_odometry.{ixx,cpp}
 │   │   ├── ekf_state.ixx           # V2:Vec6/Mat6、StateIdx、EkfState6
@@ -346,12 +347,14 @@ mininav/
 │   │   ├── viz_sink.{ixx,cpp}      # VizSink 抽象接口(V3)
 │   │   ├── rerun_sink.{ixx,cpp}    # RerunSink : VizSink
 │   │   ├── sim_state_log.{ixx,cpp} # log_to_rerun(SimState, ...)
-│   │   └── plan_log.{ixx,cpp}      # PlanScene + log_plan(V3)
+│   │   ├── plan_log.{ixx,cpp}      # PlanScene + log_plan(V3)
+│   │   └── nav_log.{ixx,cpp}       # NavScene + 闭环每帧视图(look-ahead / 追踪弧 / 3σ 椭圆 / 误差)(V4)
 │   ├── apps/sim/                   # 单一 sim,CLI11 子命令(模块 mininav.apps.sim)
 │   │   ├── main.cpp                # 子命令解析与分派
 │   │   ├── sim.ixx + common.cpp    # 选项结构、入口声明、各模式共享工具
 │   │   ├── ekf_mode.cpp            # sim ekf:V2 定位仿真
-│   │   └── plan_mode.cpp           # sim plan:V3 一次性规划;(规划) V4:nav_mode.cpp
+│   │   ├── plan_mode.cpp           # sim plan:V3 一次性规划(--smooth:路径后处理)
+│   │   └── nav_mode.cpp            # sim nav:V4 闭环导航 → nav.csv
 │   └── control/                    # 独立静态库(V4):只依赖 core,接口对齐 nav2_core
 │       ├── controller.ixx          # Controller / GoalChecker / ProgressChecker 接口
 │       ├── pure_pursuit.{ixx,cpp}  # Regulated Pure Pursuit 子集
@@ -369,6 +372,7 @@ mininav/
 │   ├── viz/                        # gmock:viz_sink_log_tests
 │   ├── control/                    # pure_pursuit + 解析用例(e^−π、4.26 L、圆弧零误差、切角尺度律)/
 │   │                               #   velocity_smoother / goal_checker / controller_config
+│   ├── nav/                        # 闭环集成测试用的 nav.yaml(过小膨胀、未知段、激进参数)
 │   ├── tools/                      # csv_compare:golden 比较工具 + 单测
 │   └── golden/                     # golden CSV 回归基线(标签 regression,见 golden/README.md)
 └── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、

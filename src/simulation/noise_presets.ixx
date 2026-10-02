@@ -31,6 +31,18 @@ export namespace mininav::simulation
         double q_bias_omega;                   // EKF 对 bias 的过程噪声(单步方差)(rad/s)²
     };
 
+    // 无噪声:真值 = 指令经执行器动力学后的运动学积分,传感器只剩量化。用于把控制
+    // 误差与噪声、定位漂移彻底拆开(闭环验收的"无噪声运行")。q_bias_omega = 0 时
+    // EKF 走无 bias 兼容路径。
+    inline constexpr NoisePreset kPresetNone{
+        .name = "none",
+        .alpha1 = 0.0, .alpha2 = 0.0, .alpha3 = 0.0, .alpha4 = 0.0,
+        .slip_sigma = 0.0,
+        .sigma_imu = 0.0,
+        .imu_bias_init = 0.0,
+        .imu_bias_rw = 0.0,
+        .q_bias_omega = 0.0,
+    };
     inline constexpr NoisePreset kPresetLowNoise{
         .name = "low-noise",
         .alpha1 = 0.01, .alpha2 = 0.005, .alpha3 = 0.005, .alpha4 = 0.01,
@@ -59,7 +71,7 @@ export namespace mininav::simulation
         .q_bias_omega = 4e-8,
     };
 
-    inline constexpr std::array kNoisePresets{kPresetLowNoise, kPresetDefault, kPresetHighNoise};
+    inline constexpr std::array kNoisePresets{kPresetNone, kPresetLowNoise, kPresetDefault, kPresetHighNoise};
 
     // 按名字查档位;未知名字抛 std::invalid_argument(CLI 层另有 IsMember 校验)。
     [[nodiscard]] constexpr const NoisePreset& noise_preset(const std::string_view name)
@@ -72,6 +84,6 @@ export namespace mininav::simulation
             }
         }
         throw std::invalid_argument{"unknown noise preset '" + std::string{name} +
-                                    "' (expected low-noise, default, high-noise)"};
+                                    "' (expected none, low-noise, default, high-noise)"};
     }
 }

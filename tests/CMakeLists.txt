@@ -9,6 +9,7 @@ add_executable(core_tests
         core/random_tests.cpp
         core/path_tests.cpp
         core/robot_description_tests.cpp
+        core/csv_format_tests.cpp
 )
 
 target_link_libraries(core_tests
@@ -296,6 +297,12 @@ mininav_add_golden_test(plan_office500_smooth plan_office500_smooth.csv
         plan --map maps/office500.yaml --start 1.175,1.175 --goal 23.875,23.875
         --config config/planner.yaml --smooth)
 
+# 闭环导航(V4):apartment S2(走廊 → 过门 → 卧室 1,到达后转到指定朝向),default 噪声,
+# EKF 进控制器。
+mininav_add_golden_test(nav_apartment_s2_seed42 nav_apartment_s2_seed42.csv
+        nav --map maps/apartment.yaml --start 0.6,3.6,0 --goal 2.9,5.6,3.1416
+        --seed 42 --preset default)
+
 # 刻意更新基线:cmake --build <build-dir> --target update_golden
 # 不属于 all;更新 golden 的 PR 必须在描述里写明原因。
 add_custom_target(update_golden
@@ -304,3 +311,63 @@ add_custom_target(update_golden
         COMMENT "Regenerating golden CSVs in tests/golden/ (state the reason in the PR)"
         VERBATIM)
 add_dependencies(update_golden sim)
+
+# ------------------------------------------------------------------
+# nav: 闭环导航集成测试(端到端跑 sim nav,在 apartment 上)
+#
+# 判定看 sim 的结果日志("nav: status=…"):PASS_REGULAR_EXPRESSION 匹配即通过,
+# 退出码不参与判定,所以配置错误这类"应当失败"的情形也用正则锁住报错内容。
+# ------------------------------------------------------------------
+set(MININAV_NAV_OUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/nav_out")
+
+# mininav_add_nav_test(<name> <pass-regex> <sim nav args...>)
+function(mininav_add_nav_test name pass_regex)
+    add_test(NAME nav.${name}
+            COMMAND $<TARGET_FILE:sim> nav ${ARGN} --no-viz --out "${MININAV_NAV_OUT_DIR}/${name}.csv"
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    set_tests_properties(nav.${name} PROPERTIES
+            LABELS "nav"
+            PASS_REGULAR_EXPRESSION "${pass_regex}")
+endfunction()
+
+set(_mininav_s3 --map maps/apartment.yaml --start 2.9,1.6,1.5708 --goal 7.2,5.6)
+
+# 验收:无噪声(EKF 进控制器)与 oracle(真值进控制器)都到达,且全程零碰撞。
+mininav_add_nav_test(noise_free_multi_room_arrives "status=arrived"
+        ${_mininav_s3} --seed 1 --preset none)
+mininav_add_nav_test(oracle_multi_room_arrives "status=arrived"
+        ${_mininav_s3} --seed 1 --preset default --controller-input truth)
+mininav_add_nav_test(ekf_multi_room_arrives "status=arrived"
+        ${_mininav_s3} --seed 1 --preset default)
+# 给了目标朝向:位置到达后原地转到该朝向,再判到达。
+mininav_add_nav_test(goal_heading_is_reached "status=arrived"
+        --map maps/apartment.yaml --start 0.6,3.6,0 --goal 2.9,5.6,3.1416 --seed 1 --preset none)
+# 激进参数过门:碰撞检测(真值车体 vs 原始地图)必须触发。
+mininav_add_nav_test(collision_is_detected "status=collision"
+        --map maps/apartment.yaml --start 0.6,3.6,0 --goal 2.9,5.6 --seed 1 --preset none
+        --nav tests/nav/reckless.yaml)
+# 规划失败(起点在墙里):正常结束并报告 plan_failed。
+mininav_add_nav_test(plan_failure_is_reported "status=plan_failed"
+        --map maps/apartment.yaml --start 0.05,0.05 --goal 2.9,5.6 --seed 1)
+# 配置错误必须在运行前失败。
+mininav_add_nav_test(rejects_inflation_below_footprint "smaller than the robot's circumscribed radius"
+        --map maps/apartment.yaml --start 0.6,3.6 --goal 2.9,5.6 --nav tests/nav/small_inflation.yaml)
+mininav_add_nav_test(rejects_unknown_config_section "unknown section 'planer'"
+        --map maps/apartment.yaml --start 0.6,3.6 --goal 2.9,5.6 --nav tests/nav/unknown_section.yaml)
+
+# 确定性:同 seed 两次运行的 nav.csv 逐字节一致(头部不含墙钟时间)。
+foreach(run a b)
+    add_test(NAME nav.determinism_run_${run}
+            COMMAND $<TARGET_FILE:sim> nav ${_mininav_s3} --seed 7 --preset default --no-viz
+                    --out "${MININAV_NAV_OUT_DIR}/determinism_${run}.csv"
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    set_tests_properties(nav.determinism_run_${run} PROPERTIES
+            FIXTURES_SETUP nav_determinism
+            LABELS "nav")
+endforeach()
+add_test(NAME nav.same_seed_is_byte_identical
+        COMMAND ${CMAKE_COMMAND} -E compare_files
+                "${MININAV_NAV_OUT_DIR}/determinism_a.csv" "${MININAV_NAV_OUT_DIR}/determinism_b.csv")
+set_tests_properties(nav.same_seed_is_byte_identical PROPERTIES
+        FIXTURES_REQUIRED nav_determinism
+        LABELS "nav")

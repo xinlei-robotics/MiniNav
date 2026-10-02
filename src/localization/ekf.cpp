@@ -111,8 +111,8 @@ namespace mininav::ekf
         const double v = mu(kV);
         const double w = mu(kOmega);
 
-        const double q_vv = params.alpha1 * v * v + params.alpha2 * w * w;
-        const double q_ww = params.alpha3 * v * v + params.alpha4 * w * w;
+        const double q_vv = params.alpha1 * v * v + params.alpha2 * w * w + params.q_dv;
+        const double q_ww = params.alpha3 * v * v + params.alpha4 * w * w + params.q_dw;
 
         Mat6 Q = Mat6::Zero();
         Q(kV, kV) = q_vv;

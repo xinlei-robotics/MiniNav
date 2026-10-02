@@ -1,0 +1,3 @@
+# 膨胀半径小于车体外接圆半径(≈ 0.136 m):sim nav 必须拒绝运行。
+planner:
+  inflation_radius: 0.10

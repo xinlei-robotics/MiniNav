@@ -243,6 +243,7 @@ graph TD
     sim --> simulation[simulation]
     sim --> localization[localization]
     sim --> planning[planning]
+    sim --> control
     sim --> viz[viz]
     sim --> cli11[CLI11]
 
@@ -290,11 +291,13 @@ real robot's start pose can feed the same planner unchanged. `viz` in turn
 does not depend on `planning`: a plan reaches the viewer as plain geometry
 (points and poses), converted by the app.
 
-`control` (V4, in progress) depends only on `core` as well: the Regulated
+`control` (V4) depends only on `core` as well: the Regulated
 Pure Pursuit controller, velocity smoother, and goal / progress checkers
 mirror the `nav2_core` plugin interfaces and see only `Path`, `Pose2D` and
 `Twist2D` — no grid, no EKF, no sensors — so V5 can wrap them as Nav2 plugins
-unchanged.
+unchanged. The closed loop is assembled in the app (`sim nav`), and its view
+reaches Rerun as plain geometry through `nav_log`, so `viz` still depends on
+neither `planning` nor `control`.
 
 **Versioning policy.** `main` reflects the current best design; superseded
 code is refactored away rather than kept alongside. Each completed
@@ -332,7 +335,8 @@ cmake --preset clang18-debug
 # Incremental builds
 cmake --build --preset build-debug -j
 
-# Run all tests (core / sensors / localization / planning / viz / regression)
+# Run all tests (core / sensors / simulation / localization / planning / control / viz /
+# regression / nav)
 ctest --preset test-debug --output-on-failure
 
 # Golden CSV regression only (end-to-end sim runs vs tests/golden/)
@@ -342,8 +346,9 @@ ctest --preset test-debug -L regression --output-on-failure
 ### Run the simulation
 
 `sim` takes a subcommand: `sim ekf` runs the localization simulation,
-`sim plan` a one-shot global plan. `sim <mode> --help` lists each mode's
-options; `sim` alone prints the overview.
+`sim plan` a one-shot global plan, and `sim nav` the closed loop (V4, in
+progress). `sim <mode> --help` lists each mode's options; `sim` alone prints
+the overview.
 
 ```bash
 # Default: random seed, default preset, RK4 integrator, online bias estimation
@@ -410,6 +415,30 @@ generated from the rectangle list in `maps/src/apartment.toml` by
 hand-drawn demo maps, it stays connected once inflated by the robot footprint.
 The current layout is a placeholder; editing the TOML with the real room's
 measurements and regenerating swaps it out.
+
+### Drive a path (V4 closed loop, in progress)
+
+`sim nav` plans from the EKF's initial estimate, smooths the path, and tracks
+it with Regulated Pure Pursuit at 20 Hz on a 100 Hz plant with actuator
+saturation and lag, until the robot arrives, collides, stalls or times out.
+Parameters come from `config/robot.yaml` and `config/nav.yaml`; the run writes
+`nav.csv` (every `SimState` column plus look-ahead, curvature, regime, the
+control / estimation / ground-truth error decomposition and clearance) and
+shows the loop in Rerun.
+
+```bash
+# Hallway -> bedroom 1, turning to face west on arrival (EKF in the loop)
+./build/clang18-debug/sim nav --map maps/apartment.yaml --start 0.6,3.6,0 \
+    --goal 2.9,5.6,3.1416 --seed 42
+
+# Oracle: ground truth into the controller, so only the control error remains
+./build/clang18-debug/sim nav --map maps/apartment.yaml --start 2.9,1.6,1.5708 \
+    --goal 7.2,5.6 --controller-input truth --no-viz
+
+# Noise-free plant (encoder quantization only)
+./build/clang18-debug/sim nav --map maps/apartment.yaml --start 2.9,1.6,1.5708 \
+    --goal 7.2,5.6 --preset none --no-viz
+```
 
 `--goal` is required and `--start` defaults to the grid center (both in world
 meters). Take timing numbers from the Release build

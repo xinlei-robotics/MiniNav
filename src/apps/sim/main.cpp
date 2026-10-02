@@ -12,6 +12,7 @@ import mininav.core.logger;
 //
 //   sim ekf  [...]   V2 定位仿真(traj.csv)
 //   sim plan [...]   V3 一次性全局规划(path.csv)
+//   sim nav  [...]   V4 闭环导航(nav.csv)
 //
 // 不带子命令时打印帮助。
 // ===========================================================================
@@ -44,7 +45,7 @@ namespace
 
         cmd->add_option("--preset", opts.preset_name, "Noise preset.")
            ->capture_default_str()
-           ->check(CLI::IsMember({"low-noise", "default", "high-noise"}));
+           ->check(CLI::IsMember({"none", "low-noise", "default", "high-noise"}));
 
         cmd->add_option("--integrator", opts.integrator_name,
                         "EKF process-model integrator. rk4 = production; euler is kept only "
@@ -111,6 +112,46 @@ namespace
         add_output_options(*cmd, opts.output, "path.csv");
         return cmd;
     }
+
+    CLI::App* add_nav_command(CLI::App& app, NavOptions& opts)
+    {
+        CLI::App* cmd = app.add_subcommand(
+            "nav",
+            "Closed-loop navigation: plan from the EKF's initial estimate, smooth the path, and "
+            "track it with Regulated Pure Pursuit until arrival, collision, stall or timeout "
+            "(nav.csv + Rerun view).");
+
+        cmd->add_option("--map", opts.map_path, "Map description (map.yaml, ROS map_server style).")
+           ->required();
+        cmd->add_option("--goal", opts.goal_str,
+                        "Goal as \"x,y\" or \"x,y,yaw\" (the heading is checked only when given).")
+           ->required();
+        cmd->add_option("--start", opts.start_str,
+                        "Start as \"x,y\" or \"x,y,yaw\" (default: grid center, heading 0).");
+        cmd->add_option("--seed", opts.seed,
+                        "Master RNG seed; if omitted, seeded from std::random_device.");
+        cmd->add_option("--preset", opts.preset_name, "Noise preset (none = noise-free).")
+           ->capture_default_str()
+           ->check(CLI::IsMember({"none", "low-noise", "default", "high-noise"}));
+        cmd->add_option("--robot", opts.robot_path,
+                        "Robot description (robot.yaml): geometry, footprint, limits, actuator lag.")
+           ->capture_default_str();
+        cmd->add_option("--nav", opts.nav_path,
+                        "Navigation parameters (nav.yaml): planner, path_smoothing, controller, "
+                        "goal_checker, progress_checker sections.")
+           ->capture_default_str();
+        cmd->add_option("--controller-input", opts.controller_input,
+                        "Pose fed to the controller: the EKF estimate, or ground truth (oracle; "
+                        "separates control error from estimation error).")
+           ->capture_default_str()
+           ->check(CLI::IsMember({"ekf", "truth"}));
+        cmd->add_option("--max-time", opts.max_time,
+                        "Timeout in seconds (default: 3 x path length / desired speed + 10 s).")
+           ->check(CLI::PositiveNumber);
+
+        add_output_options(*cmd, opts.output, "nav.csv");
+        return cmd;
+    }
 }
 
 int main(int argc, char** argv)
@@ -122,9 +163,13 @@ int main(int argc, char** argv)
     EkfOptions ekf_opts{};
     ekf_opts.robot_path = std::string{PROJECT_ROOT_DIR} + "/config/robot.yaml";
     PlanOptions plan_opts{};
+    NavOptions nav_opts{};
+    nav_opts.robot_path = std::string{PROJECT_ROOT_DIR} + "/config/robot.yaml";
+    nav_opts.nav_path = std::string{PROJECT_ROOT_DIR} + "/config/nav.yaml";
 
     const CLI::App* ekf_cmd = add_ekf_command(app, ekf_opts);
     const CLI::App* plan_cmd = add_plan_command(app, plan_opts);
+    const CLI::App* nav_cmd = add_nav_command(app, nav_opts);
 
     try
     {
@@ -144,6 +189,10 @@ int main(int argc, char** argv)
         else if (plan_cmd->parsed())
         {
             run_plan(plan_opts);
+        }
+        else if (nav_cmd->parsed())
+        {
+            run_nav(nav_opts);
         }
         else
         {

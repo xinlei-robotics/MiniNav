@@ -195,39 +195,66 @@ namespace mininav
         impl_->stream.log(std::string{trail_path}, rerun::Clear::FLAT);
     }
 
-    // ----- 静态几何原语 ---------------------------------------------------------
+    // ----- 几何原语(静态 / 每帧共用同一套转换)----------------------------------
+    namespace
+    {
+        [[nodiscard]] rerun::Points3D to_points(const std::vector<Eigen::Vector2d>& points,
+                                                const std::array<std::uint8_t, 3> color,
+                                                const float radius)
+        {
+            std::vector<rerun::Position3D> positions;
+            positions.reserve(points.size());
+            for (const Eigen::Vector2d& p : points)
+            {
+                positions.emplace_back(static_cast<float>(p.x()),
+                                       static_cast<float>(p.y()), 0.0F);
+            }
+            const rerun::Color c{color[0], color[1], color[2]};
+            return rerun::Points3D{positions}.with_colors(c).with_radii(radius);
+        }
+
+        [[nodiscard]] rerun::LineStrips3D to_line_strip(const std::vector<Eigen::Vector2d>& points,
+                                                        const std::array<std::uint8_t, 3> color)
+        {
+            std::vector<rerun::Vec3D> strip;
+            strip.reserve(points.size());
+            for (const Eigen::Vector2d& p : points)
+            {
+                strip.emplace_back(static_cast<float>(p.x()),
+                                   static_cast<float>(p.y()), 0.0F);
+            }
+            const rerun::Color c{color[0], color[1], color[2]};
+            return rerun::LineStrips3D{rerun::LineStrip3D{strip}}.with_colors(c);
+        }
+    }
+
     void RerunSink::log_points_static(const std::string_view entity_path,
                                       const std::vector<Eigen::Vector2d>& points,
                                       const std::array<std::uint8_t, 3> color,
                                       const float radius)
     {
-        std::vector<rerun::Position3D> positions;
-        positions.reserve(points.size());
-        for (const Eigen::Vector2d& p : points)
-        {
-            positions.emplace_back(static_cast<float>(p.x()),
-                                   static_cast<float>(p.y()), 0.0F);
-        }
-        const rerun::Color c{color[0], color[1], color[2]};
-        impl_->stream.log_static(
-            std::string{entity_path},
-            rerun::Points3D{positions}.with_colors(c).with_radii(radius));
+        impl_->stream.log_static(std::string{entity_path}, to_points(points, color, radius));
     }
 
     void RerunSink::log_line_strip_static(const std::string_view entity_path,
                                           const std::vector<Eigen::Vector2d>& points,
                                           const std::array<std::uint8_t, 3> color)
     {
-        std::vector<rerun::Vec3D> strip;
-        strip.reserve(points.size());
-        for (const Eigen::Vector2d& p : points)
-        {
-            strip.emplace_back(static_cast<float>(p.x()),
-                               static_cast<float>(p.y()), 0.0F);
-        }
-        const rerun::Color c{color[0], color[1], color[2]};
-        impl_->stream.log_static(
-            std::string{entity_path},
-            rerun::LineStrips3D{rerun::LineStrip3D{strip}}.with_colors(c));
+        impl_->stream.log_static(std::string{entity_path}, to_line_strip(points, color));
+    }
+
+    void RerunSink::log_points(const std::string_view entity_path,
+                               const std::vector<Eigen::Vector2d>& points,
+                               const std::array<std::uint8_t, 3> color,
+                               const float radius)
+    {
+        impl_->stream.log(std::string{entity_path}, to_points(points, color, radius));
+    }
+
+    void RerunSink::log_line_strip(const std::string_view entity_path,
+                                   const std::vector<Eigen::Vector2d>& points,
+                                   const std::array<std::uint8_t, 3> color)
+    {
+        impl_->stream.log(std::string{entity_path}, to_line_strip(points, color));
     }
 }

@@ -10,6 +10,7 @@ import mininav.sensors.imu_model;
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -167,11 +168,79 @@ TEST(Plant, SameSeedReproducesAndDifferentSeedDiffers) {
 }
 
 // ---------------------------------------------------------------------------
+// 执行器动力学:饱和 + 一阶滞后(精确离散化)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+using mininav::simulation::ActuatorDynamics;
+
+[[nodiscard]] Plant lagged_plant(const double tau, const double max_v = 10.0, const double max_w = 10.0) {
+  return Plant{test_robot(), kNoiseFree, RngFactory{1}, Pose2D{},
+               ActuatorDynamics{.max_linear_vel = max_v, .max_angular_vel = max_w, .time_constant = tau}};
+}
+
+}  // namespace
+
+// 一阶滞后的阶跃响应 1 − e^(−t/τ):t = τ 时 63.2%。精确离散化与步长无关。
+TEST(PlantDynamics, FirstOrderLagReaches63PercentAtTau) {
+  for (const double dt : {0.001, 0.01}) {
+    Plant plant = lagged_plant(0.1);
+    const int steps = static_cast<int>(std::lround(0.1 / dt));
+    for (int k = 0; k < steps; ++k) {
+      (void)plant.step(Twist2D{0.3, -1.0}, dt);
+    }
+    EXPECT_NEAR(plant.actuator_output().v(), 0.3 * (1.0 - std::exp(-1.0)), 1e-12) << "dt = " << dt;
+    EXPECT_NEAR(plant.actuator_output().w(), -1.0 * (1.0 - std::exp(-1.0)), 1e-12) << "dt = " << dt;
+  }
+}
+
+// dt > τ 时前向欧拉(系数 dt/τ = 2)会冲到 0.6;精确离散化的系数 1 − e^(−2) < 1。
+TEST(PlantDynamics, ExactDiscretizationNeverOvershoots) {
+  Plant plant = lagged_plant(0.005);
+  (void)plant.step(Twist2D{0.3, 0.0}, 0.01);
+  EXPECT_NEAR(plant.actuator_output().v(), 0.3 * (1.0 - std::exp(-2.0)), 1e-15);
+  EXPECT_LT(plant.actuator_output().v(), 0.3);
+}
+
+TEST(PlantDynamics, SaturationClampsEachComponent) {
+  Plant plant = lagged_plant(0.0, 0.5, 2.0);
+  const SensorReadings r = plant.step(Twist2D{1.0, -3.0}, 0.01);
+  EXPECT_EQ(plant.actuator_output().v(), 0.5);
+  EXPECT_EQ(plant.actuator_output().w(), -2.0);
+  EXPECT_EQ(r.true_velocity.v(), 0.5);  // 无噪声:真实速度 = 电机输出
+}
+
+// 默认动力学是直通:与显式传入 ActuatorDynamics{} 逐位相同,电机输出即指令。
+TEST(PlantDynamics, DefaultDynamicsIsPassthrough) {
+  Plant implicit{test_robot(), mininav::simulation::kPresetDefault, RngFactory{9}, Pose2D{}};
+  Plant explicit_default{test_robot(), mininav::simulation::kPresetDefault, RngFactory{9}, Pose2D{},
+                         ActuatorDynamics{}};
+  for (std::size_t k = 0; k < 200; ++k) {
+    const Twist2D cmd = command_at(k);
+    (void)implicit.step(cmd, kDt);
+    (void)explicit_default.step(cmd, kDt);
+    ASSERT_EQ(implicit.actuator_output().v(), cmd.v());
+    ASSERT_EQ(implicit.actuator_output().w(), cmd.w());
+  }
+  EXPECT_EQ(implicit.truth().x(), explicit_default.truth().x());
+  EXPECT_EQ(implicit.truth().y(), explicit_default.truth().y());
+}
+
+TEST(PlantDynamics, RobotDescriptionMapsToDynamics) {
+  const ActuatorDynamics d = mininav::simulation::actuator_dynamics_of(test_robot());
+  EXPECT_EQ(d.max_linear_vel, 0.5);
+  EXPECT_EQ(d.max_angular_vel, 2.0);
+  EXPECT_EQ(d.time_constant, 0.1);
+}
+
+// ---------------------------------------------------------------------------
 // 噪声档位表
 // ---------------------------------------------------------------------------
 
 TEST(NoisePreset, LookupByName) {
   using mininav::simulation::noise_preset;
+  EXPECT_EQ(noise_preset("none").slip_sigma, 0.0);
   EXPECT_EQ(noise_preset("low-noise").slip_sigma, 0.005);
   EXPECT_EQ(noise_preset("default").slip_sigma, 0.02);
   EXPECT_EQ(noise_preset("high-noise").slip_sigma, 0.05);

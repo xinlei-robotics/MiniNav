@@ -57,6 +57,16 @@ export namespace mininav
                                    const std::vector<Eigen::Vector2d>& points,
                                    std::array<std::uint8_t, 3> color) override;
 
+        // ---- 每帧几何原语 ----
+        void log_points(std::string_view entity_path,
+                        const std::vector<Eigen::Vector2d>& points,
+                        std::array<std::uint8_t, 3> color,
+                        float radius) override;
+
+        void log_line_strip(std::string_view entity_path,
+                            const std::vector<Eigen::Vector2d>& points,
+                            std::array<std::uint8_t, 3> color) override;
+
     private:
         struct Impl;
         std::unique_ptr<Impl> impl_;
