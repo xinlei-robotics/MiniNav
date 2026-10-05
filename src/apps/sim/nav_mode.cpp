@@ -51,7 +51,7 @@ import mininav.viz.plan_log;
 import mininav.viz.nav_log;
 
 // ===========================================================================
-// sim nav —— V4 闭环导航(docs/v4_plan.md §2.2、§5.2)。
+// sim nav —— V4 闭环导航(docs/v4_summary.md §2.2)。
 //
 //   1. 加载 robot.yaml、nav.yaml、地图;膨胀半径 < 车体外接圆半径时直接失败。
 //   2. 以 EKF 的初始估计(= 已知起点)为起点规划,路径后处理,交给控制器。

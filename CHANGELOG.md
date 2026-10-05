@@ -7,12 +7,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-05
+
+V4 — Closed-Loop Path Tracking.
+
+Closes the estimate → plan → track loop for the first time, in the deterministic
+C++ simulation: `sim nav` plans from the EKF's initial estimate, smooths the
+path, and tracks it with a Regulated Pure Pursuit subset that sees the EKF
+estimate, not ground truth, on a plant with actuator saturation and lag. Control
+error is measured separately from localization drift. Built across PRs #81–#86,
+after the roadmap re-scope (`c1379a5`).
+
+### Added
+
+- `control` static library (depends only on `core`; yaml-cpp private), with
+  interfaces shaped like `nav2_core`
+    - `Controller` / `GoalChecker` / `ProgressChecker`; `compute_velocity_commands`
+      takes a `const GoalChecker*` as in Nav2, and the progress checker takes
+      explicit simulation time so runs stay deterministic
+    - `PurePursuitController` — curvature κ = 2·y_g / d², velocity-scaled
+      look-ahead clamped to [L_min, L_max], curvature regulation from a
+      fixed-distance look-ahead, approach slowdown, rotate in place toward the
+      path or the goal heading, and an ω limit that lowers v while keeping κ;
+      three `use_*` switches turn it into classic Pure Pursuit for ablations
+    - `VelocitySmoother` — acceleration limits that scale both components
+      together, so the commanded curvature is preserved
+    - `SimpleGoalChecker` (position latch + optional yaw) and
+      `SimpleProgressChecker` (stuck detection)
+    - Per-section config parsers (`controller`, `goal_checker`,
+      `progress_checker`): derived defaults, unknown keys rejected
+- `simulation` static library — `Plant` (actuator dynamics → actuator noise →
+  encoder / IMU → ground truth) and the noise-preset table, including a new
+  all-zero `none` preset; `ActuatorDynamics` adds per-axis saturation and a
+  first-order lag with exact discretization, and defaults to a pass-through
+  that does no floating-point work
+- `localization::EkfPipeline` — encoder decoding, R evaluation and the
+  predict / update sequence, with an injectable initial pose
+- `mininav.core.path` — `Path` moved from `planning` into `core`, plus polyline
+  geometry: `project_onto` (windowed, monotone progress, so a U-turn's return
+  leg cannot steal the projection) and `lookahead_point` (circle–segment
+  intersection, no resampling)
+- `mininav.core.robot_description` + `config/robot.yaml` — the single source of
+  robot geometry, footprint (circumscribed radius), velocity limits and
+  actuator time constant; every field required, unknown keys rejected
+- `planning::path_smoothing` — true start / goal endpoints and greedy
+  line-of-sight shortcutting, checked by a supercover `segment_is_free` that
+  applies A\*'s no-corner-cutting rule; `sim plan --smooth`;
+  `OccupancyGrid::is_traversable` shared by A\* and smoothing;
+  `AStarPlanner::costmap()` / `config()`
+- `sim nav` — closed-loop navigation: 20 Hz controller with zero-order hold on
+  a 100 Hz plant, `--controller-input ekf|truth` (oracle), goal yaw, `--path`
+  to follow a given path without planning (Nav2 FollowPath), and the
+  terminal states `arrived` / `collision` (ground-truth footprint vs the
+  uninflated map) / `stuck` / `timeout` / `plan_failed`
+- `config/nav.yaml` — `planner`, `path_smoothing`, `controller`,
+  `goal_checker` and `progress_checker` sections mirroring the Nav2 parameter
+  files; an unknown section, or an inflation radius below the robot's
+  circumscribed radius, fails before the run
+- `nav.csv` — `SimState` columns plus actuator output, look-ahead, curvature,
+  regime, the `e_ctrl` / `e_true` / `e_est` error split, arclength and
+  clearance; no wall-clock value, so the same seed gives a byte-identical file
+- Rerun closed-loop view (`mininav.viz.nav_log`): raw and smoothed paths,
+  look-ahead point and pursuit arc, EKF 3σ ellipse, error / clearance / regime
+  plots; `VizSink` gains per-frame `log_points` / `log_line_strip`
+- `maps/apartment` — a 10 m × 7 m floor plan (placeholder layout) generated
+  from `maps/src/apartment.toml` by `scripts/v4/gen_floorplan.py`, connected at
+  0.20–0.30 m inflation
+- Golden CSV regression guard (`tests/golden/`, CTest label `regression`):
+  three EKF runs, three plans and one closed-loop run, compared by
+  `csv_compare` (integers exact, floats within 1e-9 relative); deliberate
+  updates only, through the `update_golden` target
+- `.gitattributes` (`* text=auto eol=lf`, `*.pgm -text`, images binary)
+- CTest labels `simulation`, `control` (including closed-loop checks against
+  the analytic results: e^−π overshoot, 4.26 L settling, zero error on arcs,
+  corner-cut scaling), `regression` and `nav` (end-to-end `sim nav` runs);
+  184 → 349 tests
+- Python scripts under `scripts/v4/`: `scenarios.py`, `step_response.py` (E1),
+  `corner_cutting.py` (E2), `run_scenarios.py` and `tracking_error.py`
+  (E3 / E4), `animate_nav.py` (README GIF); figures in `results/v4/`
+- Documentation: `docs/v4_summary.md`, `docs/experiments/v4_control.md`
+  (theory vs simulation, corner cutting and safety margins, the look-ahead
+  trade-off, the error split and drift over distance), and
+  `docs/math/pure_pursuit.md` (geometry, linearization, the lag stability
+  bound τ < T_L, corner cutting including a small-angle closed form, the
+  safety-margin budget, the 1-Lipschitz error split, the s^(3/2) drift law)
+
 ### Changed
 
-- Roadmap re-scoped: V4 now closes the plan–track loop in the deterministic C++
-  simulation (a Regulated Pure Pursuit subset with the EKF estimate in the loop),
-  and all ROS 2 work — nodes on standard messages, plus the A\* planner and the
-  controller as Nav2 plugins — moves to V5 (`docs/project_overview.md` §6)
+- Roadmap re-scoped: V4 closes the plan–track loop in the deterministic C++
+  simulation, and all ROS 2 work — nodes on standard messages, plus the A\*
+  planner and the controller as Nav2 plugins — moves to V5
+  (`docs/project_overview.md` §6)
+- `sim` takes CLI11 subcommands — `sim ekf`, `sim plan`, `sim nav` — instead of
+  mode flags; bare `sim` prints help and old flag-style calls are rejected.
+  `src/apps/sim_main.cpp` became the module `mininav.apps.sim` (one
+  implementation unit per mode plus shared helpers). EKF and planning output is
+  byte-for-byte unchanged (checked by the golden tests)
+- EKF in the closed loop: `ProcessNoiseParams` gains `q_dv` / `q_dw` for
+  velocity changes the constant-velocity model cannot see (0 in `sim ekf`), and
+  the filter's gyro σ is floored at the BNO055 quantization σ so `update_imu`
+  always gets R > 0
+- CI runs a Debug + Release matrix; the Release job executes the 50 ms A\*
+  budget and checks the golden baselines under optimization
+
+### Removed
+
+- `src/apps/sim_main.cpp` (replaced by `src/apps/sim/`) and
+  `src/planning/grid_types.cpp` (`Path` moved to `core`)
 
 ## [0.4.0] - 2026-09-27
 

@@ -17,7 +17,7 @@ export namespace mininav::control
 {
     // ---------------------------------------------------------------------------
     // PurePursuitConfig: Regulated Pure Pursuit(Nav2 RPP)核心子集的参数。
-    // 默认值由 docs/v4_plan.md §3 的推导给出(对应 config/nav.yaml 的 controller 段):
+    // 默认值由 docs/math/pure_pursuit.md 的推导给出(对应 config/nav.yaml 的 controller 段):
     //
     //   lookahead_time = 1.0 s     滞后稳定性:T_L ≥ 5·τ_eff(τ_eff ≈ τ + T_c/2 = 0.125 s)
     //   min_lookahead  = 0.10 m    切角预算:L_min ≤ m_eff / f(90°) ≈ 0.16 m

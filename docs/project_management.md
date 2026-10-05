@@ -117,8 +117,8 @@ answers "what does done look like for this version?"
 | V1 — Sensors, Noise & Odometry Drift | ✅ closed       | 0.2–0.6 m drift at 20s, default preset; byte-exact seed reproducibility |
 | V2 — EKF Sensor Fusion               | ✅ closed       | RMSE reduction ≥ 50% vs odom; Jacobian finite-diff tolerance ≤ 1e-6     |
 | V3 — Path Planning                   | ✅ closed       | A* on 200×200 map ≤ 50 ms; path length within 1 cell of shortest        |
-| V4 — Closed-Loop Path Tracking       | open (next)    | Control error (estimate-to-path): mean ≤ 10 cm, peak ≤ 30 cm; zero collisions with ground-truth feedback |
-| V5 — ROS 2 + Nav2 Integration        | open           | Goal-reach rate ≥ 80% on 5 scenarios (route lengths set from V4 drift data); e2e latency ≤ 100 ms |
+| V4 — Closed-Loop Path Tracking       | ✅ closed       | Control error (estimate-to-path): mean ≤ 10 cm, peak ≤ 30 cm; zero collisions with ground-truth feedback |
+| V5 — ROS 2 + Nav2 Integration        | open (next)    | Goal-reach rate ≥ 80% on 5 scenarios (single legs ≲ 5 m, from V4 drift data); e2e latency ≤ 100 ms |
 | V6 — Real Robot Deployment           | open           | Sim-to-real gap table; Hausdorff distance quantified                    |
 | V7 — SLAM Integration                | open (stretch) | Indoor mapping + navigation video                                       |
 

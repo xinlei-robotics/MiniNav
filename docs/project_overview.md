@@ -5,11 +5,11 @@
 > 路径规划、闭环跟踪控制、ROS 2 + Nav2 集成,并最终在 Raspberry Pi 5 + 4WD
 > 小车平台上完成室内自主移动的实车闭环。
 
-> **当前进度(截至 2026-09):V0 / V1 / V2 / V3 已完成**,V4(闭环路径跟踪)
-> 为下一个里程碑。2026-09-28 调整了 V4 / V5 的划分:V4 只在纯 C++ 仿真里完成
-> 闭环跟踪,ROS 2 + Nav2 集成整体移到 V5(理由见 §6 V4)。本文档既是项目总
-> 愿景,也是版本路线图——已完成版本(✅)的描述对齐仓库真实状态,未完成版本
-> (V4–V7)是**前瞻规划**,其模块名、目录、量化指标均为设计意图,可能随实现调整。
+> **当前进度(截至 2026-10):V0–V4 已完成**,V5(ROS 2 + Nav2 集成)为下一个
+> 里程碑。2026-09-28 调整了 V4 / V5 的划分:V4 只在纯 C++ 仿真里完成闭环跟踪,
+> ROS 2 + Nav2 集成整体移到 V5(理由见 §6 V4)。本文档既是项目总愿景,也是版本
+> 路线图——已完成版本(✅)的描述对齐仓库真实状态,未完成版本(V5–V7)是
+> **前瞻规划**,其模块名、目录、量化指标均为设计意图,可能随实现调整。
 
 ---
 
@@ -226,7 +226,7 @@ Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-
 - **配置**:yaml-cpp 读 `config/planner.yaml`(膨胀半径、启发式、连通度等),
   CLI 可逐项覆盖;规划入口是 `sim plan`
 
-### Layer 4 — 路径跟踪控制(V4 规划)
+### Layer 4 — 路径跟踪控制(V4 ✅)
 
 - **控制器**:Regulated Pure Pursuit 的核心子集——速度自适应 look-ahead、
   曲率限速、接近目标减速、大角度先原地转向、加速度限幅。不另做 PID 备选;
@@ -240,6 +240,7 @@ Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-
   `config/nav.yaml`;轮径、轮距、底盘外形、执行器限幅与时间常数放在
   `config/robot.yaml`(单一来源,膨胀半径由外形推导)。默认值由线性化稳定性
   分析(look-ahead 时间必须大于执行器滞后)与安全裕度预算推出
+  (`docs/math/pure_pursuit.md`),E1–E3 的仿真实验复核后保留
 - **考核口径**:真值误差 ≤ 控制误差 + 定位误差。控制器只对"EKF 估计位姿到
   路径"的误差负责;定位漂移单独报告,不混进控制指标
 
@@ -259,8 +260,8 @@ Layer 3 在 CMake 层面物化为静态库 `planning`,只依赖 `core` 与 yaml-
 
 ## 5. 目录结构
 
-下面是**当前真实结构**(截至 V3)。标注 `(规划)` 的条目尚不存在,
-是 V4+ 的设计意图。
+下面是**当前真实结构**(截至 V4)。标注 `(规划)` 的条目尚不存在,
+是 V5+ 的设计意图。
 
 ```
 mininav/
@@ -284,7 +285,7 @@ mininav/
 ├── maps/                           # PGM + map.yaml:corridor / room / maze / office / office500(V3)、
 │   │                               #   apartment(V4,真实尺度平面图)
 │   └── src/apartment.toml          # apartment 的矩形清单(墙 / 门 / 家具),gen_floorplan.py 的输入
-├── data/                           # 运行产出(不入库):traj.csv / path.csv
+├── data/                           # 运行产出(不入库):traj.csv / path.csv / nav.csv、data/v4/(实验原始数据)
 ├── docs/
 │   ├── project_overview.md         # 本文档:项目总愿景与版本路线
 │   ├── project_management.md       # issue / 看板 / milestone 约定
@@ -292,22 +293,26 @@ mininav/
 │   ├── v1_summary.md
 │   ├── v2_summary.md
 │   ├── v3_summary.md
+│   ├── v4_summary.md
 │   ├── math/
 │   │   ├── odom_noise.md           # Velocity Motion Model + 编码器物理/量化 (V1)
 │   │   ├── EKF_Foundations.md      # EKF 预测/更新、Jacobian、Joseph form (V2)
 │   │   ├── runge_kutta_integration.md  # RK4 过程积分及其解析 Jacobian (V2)
-│   │   └── astar_planning.md       # 栅格、膨胀、A* 最优性、启发式可采纳性 (V3)
+│   │   ├── astar_planning.md       # 栅格、膨胀、A* 最优性、启发式可采纳性 (V3)
+│   │   └── pure_pursuit.md         # PP 几何、线性化、滞后稳定性、切角、裕度预算、误差分解 (V4)
 │   └── experiments/
 │       ├── v2_ekf_fusion.md        # 20-seed EKF-vs-odom 定量报告 (V2)
-│       └── v3_planning.md          # 规划耗时 / 最优性 / 确定性报告 (V3)
+│       ├── v3_planning.md          # 规划耗时 / 最优性 / 确定性报告 (V3)
+│       └── v4_control.md           # E1–E4:理论验证、切角与安全、参数折中、误差分解 (V4)
 ├── scripts/                        # Python 后处理(按版本组织)
 │   ├── plot_trajectory.py          # V0 出图
 │   ├── v1/analyze_drift.py         # V1 漂移分析
 │   ├── v2/                         # V2 EKF 分析(analyze_ekf / covariance / integrator / sweep)
 │   ├── v3/                         # V3 规划:plot_plan / benchmark_planner / optimality_check /
 │   │                               #   animate_search / gen_office500 / _mapio
-│   └── v4/                         # V4:gen_floorplan(TOML 矩形清单 → PGM + map.yaml)
-├── results/                        # 实验产出:results/v{0,1,2,3}/ 下的 PNG / GIF
+│   └── v4/                         # V4:gen_floorplan / scenarios / step_response / corner_cutting /
+│                                   #   run_scenarios / tracking_error / animate_nav / _navio
+├── results/                        # 实验产出:results/v{0,1,2,3,4}/ 下的 PNG / GIF
 ├── src/
 │   ├── core/                       # 运动学、类型、路径几何、机器人描述、Trajectory、CSV、随机数、积分器、日志
 │   │   ├── types.{ixx,cpp}         # Pose2D / Twist2D / EncoderTicks / SimState
@@ -372,7 +377,7 @@ mininav/
 │   ├── viz/                        # gmock:viz_sink_log_tests
 │   ├── control/                    # pure_pursuit + 解析用例(e^−π、4.26 L、圆弧零误差、切角尺度律)/
 │   │                               #   velocity_smoother / goal_checker / controller_config
-│   ├── nav/                        # 闭环集成测试用的 nav.yaml(过小膨胀、未知段、激进参数)
+│   ├── nav/                        # 闭环集成测试用的 nav.yaml(过小膨胀、未知段、激进参数)与 --path 路径
 │   ├── tools/                      # csv_compare:golden 比较工具 + 单测
 │   └── golden/                     # golden CSV 回归基线(标签 regression,见 golden/README.md)
 └── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、
@@ -386,7 +391,8 @@ mininav/
 每个版本都是一次完整迭代,而不是推倒重来。V0–V2 期间,各版本的可执行档
 曾经并存,作为回归基线;V2 收尾后改为 **tag-based 版本策略**:`main` 只保留
 当前最佳设计(单一 `sim`),每个完成的里程碑由 git tag + GitHub Release +
-`docs/` 回顾文档保存(`v0.1.0`=V0 … `v0.4.0`=V3),回归保护靠测试与确定性输出。
+`docs/` 回顾文档保存(`v0.1.0`=V0 … `v0.5.0`=V4),回归保护靠测试与确定性输出;
+V4 起由 `tests/golden/` 的 golden CSV 在 CI 里守护。
 下文各版本的"交付"一栏记录的是**当时**的产物。
 
 ### V0 — 理想运动仿真 ✅
@@ -455,7 +461,7 @@ mininav/
   `docs/experiments/v3_planning.md`、`docs/math/astar_planning.md`、
   `docs/v3_summary.md`
 
-### V4 — 闭环路径跟踪
+### V4 — 闭环路径跟踪 ✅
 
 > **2026-09-28 调整**:原 V4 是"Pure Pursuit + 把 V0–V3 全部重新打包成 ROS 2
 > 节点",原 V5 是"在 ROS 2 内完成端到端闭环"。重新划分的理由:
@@ -471,25 +477,27 @@ mininav/
 - **目标**:让机器人沿 A\* 路径真正开到终点——规划 → 路径后处理 → 跟踪
   (控制器输入 EKF 估计位姿)→ 到达,全程同 seed 逐字节确定。
 - **关键模块**:
-  - `control` 库:`Controller` / `GoalChecker` / `ProgressChecker`(对齐
-    `nav2_core`)、Regulated Pure Pursuit 子集、速度平滑器
+  - `control` 库(只依赖 `core`):`Controller` / `GoalChecker` / `ProgressChecker`
+    (对齐 `nav2_core`)、Regulated Pure Pursuit 子集、速度平滑器(两分量同比例收缩)
   - `simulation` 库:被控对象 `Plant`(执行器饱和 + 一阶滞后 → 执行噪声 →
     真值积分 → 传感器);`localization` 新增 `EkfPipeline`。二者正是 V5 仿真
     节点与 EKF 节点的边界
-  - 路径后处理:首尾替换为真实起止点、视线捷径平滑
-  - 机器人描述 `config/robot.yaml`(由外形推导膨胀半径)、导航参数
-    `config/nav.yaml`;一张真实尺度的演示地图
-  - `sim` 拆成 `ekf / plan / nav` 子命令;golden CSV 回归护栏进 CI
-- **量化指标**:
-  - 控制误差(EKF 估计位姿到路径的横向距离,default 噪声,5 场景 × 10 seed):
-    均值 ≤ 10 cm、峰值 ≤ 30 cm
-  - 线性化理论吻合:直线小偏置下,反向超调与调节距离相对解析值
-    (e^−π ≈ 4.3%、约 4.26 倍 look-ahead 距离)偏差 ≤ 10%
-  - 无噪声与 oracle(真值进控制器)运行:零碰撞、100% 到达
-  - 真值到达误差与碰撞率 vs 路程:只报告、不设门槛,用来决定 V5 场景设计与
-    绝对定位的引入时机
-- **交付**:`sim nav` 闭环模式、`nav.csv`、Rerun 闭环视图与 README GIF、
-  `docs/experiments/v4_control.md`、`docs/math/pure_pursuit.md`、
+  - `Path` 迁入 `core`(折线投影 / look-ahead 求交);路径后处理:首尾替换为真实
+    起止点、视线捷径平滑
+  - 机器人描述 `config/robot.yaml`(全部字段必填)、导航参数 `config/nav.yaml`
+    (按 Nav2 参数文件分段);真实尺度平面图 `maps/apartment`
+  - `sim` 拆成 `ekf / plan / nav` 子命令;`sim nav --path` 跟随给定路径;golden CSV
+    回归护栏与 Debug / Release CI 矩阵
+- **量化指标**(5 场景 × 10 seed,default 噪声,EKF 进控制器):控制误差均值
+  **0.58 cm**、峰值 **6.82 cm**(目标 ≤ 10 / 30 cm);线性化理论吻合 ≤ 2%(目标 ≤ 10%);
+  无噪声与 oracle 60 次运行零碰撞、全部在 5 cm 内到达;`nav.csv` 同 seed 逐字节一致,
+  EKF / 规划 golden 未变
+- **关键发现**:真值误差几乎全部来自定位。只靠编码器与陀螺,位置误差按 $s^{3/2}$
+  增长(航向随机游走),约 5 m 后 10% 的运行误差超过门洞净空;office500 的 34 m 路线
+  20 次 EKF 运行中 19 次碰撞,oracle 10/10 到达——这决定了 V5 的场景路程与 V6 的绝对
+  定位。默认参数由推导给出,500 次配对实验没有找到更好的组合
+- **交付**:`sim nav` 闭环模式、`nav.csv`、Rerun 闭环视图与 README 首屏 GIF、
+  `scripts/v4/`、`docs/experiments/v4_control.md`、`docs/math/pure_pursuit.md`、
   `docs/v4_summary.md`
 
 ### V5 — ROS 2 + Nav2 集成
@@ -508,8 +516,9 @@ mininav/
     `OccupancyGrid`),不建自定义消息包。这些正是 V6 硬件驱动要发的话题,
     EKF 节点在仿真与实车之间一行不改
   - launch、参数文件、RViz2 配置;launch_testing 端到端测试进 CI
-- **量化指标**:5 个场景目标到达率 ≥ 80%(真值误差 ≤ 20 cm;场景路程上限按
-  V4 测得的漂移曲线确定);端到端时延(goal 下发 → 第一条 cmd_vel)≤ 100 ms
+- **量化指标**:5 个场景目标到达率 ≥ 80%(真值误差 ≤ 20 cm;按 V4 测得的漂移
+  曲线,单程 ≲ 5 m,或在各段之间重新给定初始位姿);端到端时延(goal 下发 →
+  第一条 cmd_vel)≤ 100 ms。V4 的 `sim nav` 同场景、同参数的结果是 V5 的对照基线
 - **交付**:colcon 工作空间、RViz2 导航 demo(MP4 + GIF,README 首屏与
   LinkedIn 分享素材)、`docs/experiments/v5_full_loop.md`
 
@@ -525,8 +534,8 @@ mininav/
   参数从 V2 仿真值迁移到实车标定值;`config/robot.yaml` 换成实测值(外形、
   限幅、执行器时间常数、滑移转向的有效轮距)
 - **绝对定位**:4WD 是滑移转向,打滑远大于差速仿真,真机的到达精度几乎一定
-  离不开绝对定位。方案(ArUco + Pi 摄像头,或 2D LiDAR + AMCL / slam_toolbox)
-  依据 V4 的"到达误差 vs 路程"数据在 V6 开工前确定
+  离不开绝对定位——V4 的仿真里仅靠航位推算,34 m 路线 20 次中 19 次因漂移碰撞。
+  方案(ArUco + Pi 摄像头,或 2D LiDAR + AMCL / slam_toolbox)在 V6 开工前确定(#80)
 - **量化指标**:**sim-to-real gap 表格**——每个 EKF / 控制器
   参数的仿真值 vs 实车标定值并列;同一条命令序列在仿真与实车上
   的轨迹 Hausdorff 距离 ≤ X m
@@ -582,12 +591,14 @@ Python 脚本从 CSV 出 PNG/PDF/GIF。`.rrd` 是二进制格式不可 diff、
 累积 RMSE、NIS 一致性、3σ 状态误差、bias 学习曲线与协方差椭圆演化(含
 `covariance_evolution.gif`);V3 的 `scripts/v3/` 出规划总览图
 `plan_<map>.png`、耗时基准、最优性对比与 A\* 搜索动画 `search_<map>.gif`
-(文件名随地图,多张地图的产出互不覆盖)。
+(文件名随地图,多张地图的产出互不覆盖);V4 的 `scripts/v4/` 驱动 Release 的
+`sim nav` 批量运行(配置变体 = 仓库默认值 + 覆盖项),出 E1–E4 的理论对照、切角、
+参数折中、误差分解与漂移图,以及闭环动画 `nav_s3.gif`。
 
 ### 7.3 MP4 / GIF 的角色
 
-V3 的 A\* 搜索动画(`search_office500.gif`)目前是 README 首屏;V4 的闭环
-导航 GIF、V5 的 RViz2 / Nav2 导航 demo 与 V6 实车视频将依次成为之后的首屏
+V4 的闭环导航动画(`nav_s3.gif`,matplotlib 渲染 + ffmpeg 全局调色板)目前是
+README 首屏;V5 的 RViz2 / Nav2 导航 demo 与 V6 实车视频将依次成为之后的首屏
 与外部分享素材。
 Rerun 录屏 + ffmpeg 转 GIF 是标准生成路径。简历 PDF 无法嵌入
 GIF,但 GitHub README 与 LinkedIn 帖子可以。
@@ -610,7 +621,7 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 ### 8.1 单元测试(GoogleTest)
 
 每个静态库对应一个测试可执行档(`core_tests` / `sensors_tests` /
-`localization_tests` / `planning_tests` / `viz_tests`,V4 起加
+`localization_tests` / `planning_tests` / `viz_tests`,V4 加了
 `control_tests` / `simulation_tests`),通过 `gtest_discover_tests` 自动注册到 CTest,并按库打
 标签(`ctest -L planning`),支持 `ctest -R` 精细化筛选。
 
@@ -621,6 +632,7 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 | `localization` | WheelOdometry 纯函数性、EKF predict/update、**雅可比有限差分数值验证**(V2)                |
 | `planning`     | 坐标往返、PGM 加载与 y 翻转、欧氏膨胀、A\* 精确最优长度、不可达检测、启发式可采纳性拒绝、200×200 压力图与耗时(V3) |
 | `viz`          | gmock 断言可视化下沉的实体路径与调用契约,不起 Viewer(V3)                                   |
+| `simulation`   | `Plant` 与直接组合传感器模型逐位相同;一阶滞后在 t = τ 达 63.2%、精确离散化不过冲、饱和、默认直通(V4) |
 | `control`      | 解析用例:直线小偏置的超调与调节距离对照线性化解、圆弧稳态误差为零、切角与 look-ahead 成正比;限速、原地转向、到达停车(V4) |
 
 ### 8.2 CSV 回归 diff
@@ -629,9 +641,10 @@ GIF,但 GitHub README 与 LinkedIn 帖子可以。
 与 baseline diff,空 diff 即证明无数值回归。这条 baseline diff
 **同时检验**多个不变量:RngFactory 稳定性、σ=0 跳过 RNG 约定、
 估计器纯函数性、主循环无隐式状态——任何一处违反都会让 diff 非空。
-V4 计划把这条 diff 固化为 CTest 的 golden 回归:EKF / 规划 / 导航三种模式的
-基线 CSV 入库(`tests/golden/`)并进 CI;浮点列按 1e-9 相对容差比较,以容忍
-不同 CPU 上 libm 实现的末位差异。
+V4 已把这条 diff 固化为 CTest 的 golden 回归(`tests/golden/`,标签 `regression`):
+EKF 三档、规划三条、闭环一条基线入库并进 CI,由 `csv_compare` 比较——整数列精确,
+浮点列按 1e-9 相对容差,以容忍不同 CPU 上 libm 实现的末位差异;基线只能经
+`update_golden` 刻意更新。
 
 ### 8.3 可复现性回归(V1 起)
 
@@ -640,8 +653,9 @@ V4 计划把这条 diff 固化为 CTest 的 golden 回归:EKF / 规划 / 导航�
 
 ### 8.4 集成测试(V4 起)
 
-V4:`sim nav` 闭环集成测试进 CTest——无噪声下到达且零碰撞、oracle(真值进
-控制器)下到达误差在容差内、同 seed 两次运行 `nav.csv` 逐字节一致。
+V4:`sim nav` 闭环集成测试进 CTest(标签 `nav`,15 条)——无噪声 / oracle / EKF
+多房间到达、目标朝向、激进参数下碰撞检测必然触发、`plan_failed`、配置错误在运行前
+失败、`--path` 跟随与参数互斥、同 seed 两次运行 `nav.csv` 逐字节一致。
 
 V5:引入 ROS 2 后,通过 `colcon test` + launch_testing 跑节点级与端到端集成
 测试——节点能否正常启动、topic 能否正确收发、发出目标后能否到达。
@@ -649,10 +663,10 @@ V5:引入 ROS 2 后,通过 `colcon test` + launch_testing 跑节点级与端到�
 ### 8.5 持续集成
 
 GitHub Actions 已激活,环境为 `ubuntu-24.04 + clang-18`,每个 PR 与
-push 到 `main` 时以 Debug preset 构建并跑全部单元测试。CSV 回归 diff 目前
-在本地手动执行,尚未进 CI;只在 Release 下有意义的断言(如 A\* 的 50 ms
-耗时预算)在 CI 中显示为 Skipped。V4 计划把 golden 回归与闭环集成测试纳入
-CI;V5 再加入 ROS 2 的 colcon test。
+push 到 `main` 时以 Debug / Release 矩阵构建并跑全部测试(单元、golden 回归、
+闭环集成)。只在 Release 下有意义的断言(A\* 的 50 ms 耗时预算)在 Release job
+中真正执行;失败时上传测试日志与 golden 产出,便于 diff。V5 再加入 ROS 2 的
+colcon test。
 
 ---
 
@@ -687,16 +701,16 @@ C++ 负责**系统跑起来**,Python 负责**实验讲清楚**。
 | `EKF_Foundations.md`         | EKF 预测/更新方程、雅可比手推与有限差分验证、Joseph form       | V2 |
 | `runge_kutta_integration.md` | RK4 过程积分及其解析 Jacobian                      | V2 |
 | `astar_planning.md`          | 占据栅格与配置空间膨胀、A\* 最优性证明、启发式在 4/8 连通下的可采纳性与一致性 | V3 |
+| `pure_pursuit.md`            | PP 几何、直线附近线性化与滞后稳定性(τ < T_L)、圆弧零误差、切角尺度律与小角度解、安全裕度预算、误差分解与 s^{3/2} 漂移律 | V4 |
 
-> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`)。V4 计划新增
-> `pure_pursuit.md`:几何、直线附近线性化与滞后稳定性、切角尺度律、安全裕度预算。
+> V0 运动学暂无独立数学文档(推导见 `v0_summary.md`)。
 
 **实验报告**(`docs/experiments/`):每个版本结束时一篇,说清楚"问题→
 方案→坑→结果",含图、数据、结论。已有 `v2_ekf_fusion.md`(V2)、
-`v3_planning.md`(V3)。
+`v3_planning.md`(V3)、`v4_control.md`(V4)。
 
 **版本总结**(`docs/vN_summary.md`):每个版本一篇阶段性总结,记录架构、
-关键设计决策、踩坑实录、与下一个版本的衔接。已有 `v0`/`v1`/`v2`/`v3`。
+关键设计决策、踩坑实录、与下一个版本的衔接。已有 `v0`–`v4`。
 
 **项目管理**(`docs/project_management.md`):issue 模板、看板列、
 milestone 与发布约定。
@@ -706,7 +720,7 @@ milestone 与发布约定。
 - V0-V2:Rerun 录屏 + Python PNG(三轨迹对比、漂移曲线、协方差椭圆)
 - V2:EKF RMSE 表格
 - V3:A\* 搜索过程动画(500×500 楼宇平面)、规划总览图、耗时与最优性图表
-- V4:**闭环导航 GIF**(仿真,README 首屏候选)
+- V4:**闭环导航 GIF**(仿真,README 首屏)、理论对照 / 切角 / 误差分解 / 漂移曲线图
 - V5:**RViz2 / Nav2 导航 MP4 + GIF**(README 首屏与分享素材)
 - V6:**实车导航视频**+ **sim-to-real gap 表格**
 
@@ -720,8 +734,8 @@ milestone 与发布约定。
 | V1 | `default` preset 20s 位置漂移 0.2-0.6 m,seed 复现性 byte-exact             |
 | V2 | 融合增益档位相关(low-noise position RMSE −48.9%),雅可比有限差分双路径校验;bias 估计工作域已量化 |
 | V3 | 200×200 地图 A\* 规划 ≤ 50 ms(实测 p95 3.94 ms),路径长度偏差 ≤ 1 cell(实测 0 cell) |
-| V4 | 控制误差(估计位姿到路径)均值 ≤ 10 cm、峰值 ≤ 30 cm;线性化理论吻合 ≤ 10%;无噪声 / oracle 零碰撞 |
-| V5 | Nav2 闭环:5 个场景到达率 ≥ 80%(场景路程按 V4 漂移数据确定),端到端时延 ≤ 100 ms |
+| V4 | 控制误差(估计位姿到路径)均值 ≤ 10 cm、峰值 ≤ 30 cm(实测 0.58 / 6.82 cm);线性化理论吻合 ≤ 10%(实测 ≤ 2%);无噪声 / oracle 零碰撞(60 次);漂移 ∝ s^1.5 已量化 |
+| V5 | Nav2 闭环:5 个场景到达率 ≥ 80%(单程 ≲ 5 m,按 V4 漂移数据),端到端时延 ≤ 100 ms |
 | V6 | sim-to-real gap 表(每个参数仿真 vs 实测),轨迹 Hausdorff 距离量化                   |
 
 ---

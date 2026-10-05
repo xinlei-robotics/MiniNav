@@ -46,7 +46,8 @@ LOOKAHEAD_TIMES = (0.5, 0.6, 0.7, 0.8, 1.0, 1.2, 1.4)
 MIN_RADII = (0.3, 0.6, 0.9)
 F_LINEAR = math.exp(-1.0) * math.cos(1.0)                    # ≈ 0.199
 G_LINEAR = math.exp(-0.75 * math.pi) / math.sqrt(2.0)        # ≈ 0.067
-PLAN_TABLE = {22.5: 0.077, 45.0: 0.151, 90.0: 0.271, 135.0: 0.303}  # docs/v4_plan.md §3.4(规划阶段预估)
+# 规划阶段数值积分给出的预估(135° 那个其实是外侧 g,见 docs/math/pure_pursuit.md §6.2 的表注)。
+PLAN_TABLE = {22.5: 0.077, 45.0: 0.151, 90.0: 0.271, 135.0: 0.303}
 
 
 def margin_budget() -> float:
@@ -104,7 +105,7 @@ def e2a(sim, ax_f) -> None:
         ax_f.plot(THETAS_DEG, g, marker, color="tab:red", mfc="none" if k else "tab:red", ms=7,
                   label=f"exit overshoot δ_out / L (L = {L} m)")
     ax_f.plot(list(PLAN_TABLE), list(PLAN_TABLE.values()), "x", color="black", ms=8,
-              label="plan-stage estimate (v4_plan §3.4)")
+              label="plan-stage estimate")
     ax_f.set_xlabel("corner angle θ [deg]")
     ax_f.set_ylabel("deviation / L")
     ax_f.set_title("E2a: corner deviation scales with L (classic PP, τ = 0)")

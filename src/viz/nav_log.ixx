@@ -37,7 +37,7 @@ export namespace mininav
     //   {world}/control/lookahead         look-ahead 点
     //   {world}/control/arc               追踪圆弧:控制器输入位姿 → look-ahead 点
     //   {world}/estimate/ekf_cov          EKF 位置 3σ 椭圆
-    //   /plots/error/{ctrl,est,true}      误差分解(docs/v4_plan.md §3.6)
+    //   /plots/error/{ctrl,est,true}      误差分解(docs/math/pure_pursuit.md §8)
     //   /plots/clearance                  真值净空
     //   /plots/regime                     控制工况编号
     // ---------------------------------------------------------------------------

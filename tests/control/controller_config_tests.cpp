@@ -20,7 +20,7 @@ constexpr double kEps = 1e-12;
 
 }  // namespace
 
-// 空段 = 全部默认;默认值即 docs/v4_plan.md §4.6 推导出的参数。
+// 空段 = 全部默认;默认值即 docs/math/pure_pursuit.md §10 推导出的参数。
 TEST(ControllerConfig, EmptySectionGivesDerivedDefaults) {
   const ControllerConfig cfg = parse_controller_config("");
   EXPECT_NEAR(cfg.control_frequency, 20.0, kEps);

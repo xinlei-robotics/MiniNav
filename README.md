@@ -44,126 +44,129 @@ It answers the three core questions of mobile robot navigation:
 The project is organized as a multi-stage roadmap (V0 → V6), each
 version solving one well-scoped problem and building on the previous one.
 
-> **Current status: V3 complete.** An occupancy-grid map and an A\* global
-> planner now sit on top of V2's EKF localization: `sim plan` loads a
-> ROS-style map, inflates obstacles by the robot radius, and plans an optimal
-> path in milliseconds. See
-> [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md) for the
-> timing and optimality study, and [`docs/v3_summary.md`](docs/v3_summary.md)
-> for the design retrospective.
+> **Current status: V4 complete.** The simulated robot now drives itself: `sim nav`
+> plans from the EKF's estimate, smooths the A\* path, and tracks it with
+> Regulated Pure Pursuit on a plant with actuator saturation and lag — steering
+> by the *estimate*, not the ground truth. See
+> [`docs/experiments/v4_control.md`](docs/experiments/v4_control.md) for the
+> experiments, [`docs/math/pure_pursuit.md`](docs/math/pure_pursuit.md) for the
+> derivations, and [`docs/v4_summary.md`](docs/v4_summary.md) for the design
+> retrospective. Next: V5 moves the loop into ROS 2 + Nav2.
 
 ---
 
-## Latest milestone — V3: Global path planning
+## Latest milestone — V4: Closed-loop path tracking
 
-V3 gives MiniNav its first model of the *environment*. V2 showed that
-proprioception alone can never pin down position; V3 builds the map
-infrastructure that exteroceptive localization will need, and on top of it
-delivers the first "where am I going, and how do I get there" capability.
-It was built across seven PRs — the `planning` library scaffold with yaml-cpp
-(#67), the `OccupancyGrid` core (#68), PGM + `map.yaml` loading (#69),
-Euclidean obstacle inflation (#70), the A\* planner (#71), the spdlog / gmock
-infrastructure upgrade (#72), and the `sim --map` integration (#73).
+V4 closes the estimate → plan → track loop for the first time. The robot
+follows a path it planned itself, steering by its own EKF estimate — and runs
+into a wall when that estimate drifts too far. Everything runs in the
+deterministic C++ simulation, so every result replays from a seed. It was built
+across six PRs: a golden-CSV regression guard (#81), the plant / estimator split
+and `robot.yaml` (#82), the `control` library (#83), path smoothing and a
+real-scale floor plan (#84), the closed-loop `sim nav` (#85), and the
+experiments (#86).
 
 <p align="center">
-  <img src="results/v3/plan_office500.png" alt="V3 — A* plan across a 500×500 floor plan" width="70%"/>
+  <img src="results/v4/e4_drift.png" alt="V4 — dead-reckoning drift vs distance and collision-free runs on a 34 m route" width="90%"/>
 </p>
 
-### The planner
+### The loop
 
-- **Occupancy grid** loaded from a ROS `map_server`-style PGM + `map.yaml`
-  (self-written P2/P5 parser, no image library), tri-valued
-  free / occupied / unknown, with world↔grid transforms anchored at the
-  map's lower-left corner.
-- **Obstacle inflation** through a multi-source Euclidean distance transform
-  (the `costmap_2d` approach), so the robot is planned as a point in
-  configuration space. The same distance field drives an opt-in clearance
-  cost that makes equal-length paths keep away from walls.
-- **A\*** with flat `g` / `parent` / `closed` tables and a binary-heap open
-  set; 4- or 8-connectivity, Manhattan / Euclidean / Octile heuristics,
-  tie-breaking toward the goal, and no corner-cutting on diagonals.
-- **`GlobalPlanner` facade** shaped like `nav2_core::GlobalPlanner` but using
-  MiniNav's own `Pose2D` / `Path` types — the V5 Nav2 integration only needs
-  a thin plugin adapter.
-- **External configuration** in `config/planner.yaml` (yaml-cpp), with each
-  field overridable from the command line.
+- **Regulated Pure Pursuit** (a subset of Nav2's RPP) behind interfaces shaped
+  like `nav2_core::Controller` / `GoalChecker` / `ProgressChecker`: velocity-scaled
+  look-ahead, curvature regulation from a fixed-distance look-ahead, approach
+  slowdown, rotate-in-place and an ω limit, plus a velocity smoother that
+  scales both components together so the commanded curvature survives. The
+  `control` library depends only on `core`, so V5 can wrap it as a Nav2 plugin.
+- **A realistic plant.** Actuator saturation and a first-order lag (exact
+  discretization), a 20 Hz controller with zero-order hold on a 100 Hz plant,
+  and one source of truth for robot geometry and limits: `config/robot.yaml`.
+- **Smoothed paths.** The A\* staircase gets its true start and goal and is
+  straightened by line-of-sight shortcuts, checked with the same
+  no-corner-cutting rule as A\* — every 45° step was a curvature impulse for the
+  controller.
+- **The EKF in the loop.** The V2 filter runs unchanged except for process
+  noise covering the velocity changes the controller makes, which a
+  constant-velocity model cannot see.
+- **An honest error split.** `nav.csv` records the control error (estimate to
+  path), the estimation error and the true error separately, and
+  `--controller-input truth` runs an oracle with perfect localization.
+- **A regression guard.** Golden CSVs for the EKF, planning and closed-loop
+  modes are compared in CTest on a Debug + Release CI matrix, so the
+  restructuring that made room for the loop provably changed no output.
 
 ### What the experiments found
 
-Full report in [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md);
-derivations in [`docs/math/astar_planning.md`](docs/math/astar_planning.md).
+Full report in [`docs/experiments/v4_control.md`](docs/experiments/v4_control.md);
+derivations in [`docs/math/pure_pursuit.md`](docs/math/pure_pursuit.md).
 
-- **Fast, with headroom.** On 200×200 random-obstacle maps a single A\*
-  query takes **3.9 ms at p95** (Release) against a 50 ms budget. The
-  500×500 floor plan above plans corner to corner in ~12 ms.
-- **Optimal.** Path lengths match a Dijkstra ground truth exactly (0-cell
-  deviation against a ≤ 1-cell target) on the hand-drawn maps, and match the
-  analytic shortest length on a 200×200 serpentine stress maze.
-- **The optimality guarantee is conditional — the headline engineering
-  lesson.** A\* is only optimal with a *consistent* heuristic, and that
-  depends on how the heuristic is paired with the grid connectivity.
-  Manhattan distance overestimates diagonal steps on an 8-connected grid:
-  on the 500×500 map it returned a path 1.13 cells longer than optimal while
-  expanding 97 % fewer nodes — with no error anywhere. The rule now lives in a
-  single `constexpr is_admissible()` check, enforced both when `planner.yaml`
-  is parsed and when the planner is constructed (which also catches CLI
-  overrides).
-- **Tighter heuristics expand less.** Octile distance — the exact
-  obstacle-free cost on an 8-connected grid — finds the same optimal path as
-  Euclidean with 26 % fewer expansions.
-- **Deterministic without a seed.** A\* consumes no randomness, so the same
-  map, start, goal, and config produce a byte-identical `path.csv`.
-- **Test the case that matters.** The first timing test planned across an
-  *empty* map — the heuristic's best case, exactly 200 expansions — and its
-  assertion only ran in Release while CI builds Debug. It now runs on a
-  serpentine stress maze (26,666 of 26,866 free cells expanded), backed by
-  build-independent expansion-count checks that CI does enforce.
+- **The theory holds to about 2 %.** Linearized Pure Pursuit is a second-order
+  system with damping ratio 1/√2 at every speed; its response depends only on
+  distance travelled over look-ahead. Simulated overshoot and settling distance
+  match the analytic values within 2 %, a third-order lag model predicts the
+  effect of actuator lag within 0.3 percentage points, and velocity-scaled
+  look-ahead keeps the response identical across speeds — the first-principles
+  reason behind Nav2's `use_velocity_scaled_lookahead_dist`.
+- **Defaults are derived, not tuned.** The stability bound (actuator lag below
+  the look-ahead time) and a safety-margin budget give the default parameters;
+  500 paired-seed runs over look-ahead time and speed found no setting that
+  beats them on every metric, so they stayed unchanged.
+- **The controller does its part.** Across 5 scenarios × 10 seeds with the EKF
+  in the loop, the control error averages **0.58 cm** and peaks at **6.82 cm**
+  (targets: 10 cm and 30 cm). With noise-free or ground-truth feedback, 60 of 60
+  runs arrive within 5 cm with zero collisions.
+- **Localization is the bottleneck.** With only encoders and a gyro, position
+  error grows as s^1.5 with distance (a heading random walk, measured slope
+  1.49–1.52), and after about 5 m one run in ten has drifted by more than a
+  doorway's clearance. On a 34 m route, 19 of 20 EKF-driven runs hit a wall
+  while 10 of 10 oracle runs arrive. That sets V5's scenario length and makes
+  absolute localization a V6 requirement.
+- **A full controller is less stable than its linear model.** At a look-ahead
+  time of 0.5 s the linear model is still stable, but the real controller falls
+  into a rotate-in-place ↔ track limit cycle that doubles the time to goal.
 
-V3 is where MiniNav starts reasoning about the space around the robot —
-and where "optimal" became a checked precondition rather than an assumption.
+V4 is where MiniNav first moves under its own control, and where the cost of
+localization drift became something you can measure in collisions.
 
 ---
 
-## Previous milestone — V2: EKF sensor fusion
+## Previous milestone — V3: Global path planning
 
-V2 replaced V1's open-loop wheel odometry with a probabilistic **Extended
-Kalman Filter** over the 6-dimensional state `[pₓ, p_y, θ, v, ω, b_ω]`,
-fusing wheel encoders and a gyro as *observations of the hidden state*
-(not control inputs), with online gyro-bias estimation, Joseph-form
-covariance updates, an RK4 process model whose analytic Jacobian is checked
-against finite differences, and NIS consistency diagnostics.
+V3 gave MiniNav its first model of the environment: an occupancy grid loaded
+from a ROS-style PGM + `map.yaml`, Euclidean obstacle inflation, and an A\*
+planner behind a `nav2_core`-shaped `GlobalPlanner` facade.
 
 <p align="center">
-  <img src="results/v2/fusion_trajectory.png" alt="V2 — odom vs EKF vs truth trajectory" width="80%"/>
-  <img src="results/v2/covariance_evolution.gif" alt="V2 — 3σ covariance ellipse growth over a run" width="60%"/>
+  <img src="results/v3/search_office500.gif" alt="V3 — A* search across a 25 m × 25 m floor plan" width="60%"/>
 </p>
 
-Findings from the 20-seed study in
-[`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md):
+Findings from [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md):
 
-- **Fusion lowers error, but the gain is preset-dependent** — position RMSE
-  drops **−48.9 %** vs odometry at `low-noise` but only **−8.3 %** at
-  `default`. There is no honest single "−X %".
-- **Online bias estimation has an operating envelope.** It is indispensable
-  when the gyro bias dominates, but at `high-noise` the bias state becomes too
-  weakly observable and destabilizes the filter (19 of 20 seeds diverge).
-- **Position is unobservable from proprioception alone** — the 3σ position
-  ellipse grows ~1.9×10⁵× over 20 s. That is the problem the V3 map
-  infrastructure is the first step toward solving.
+- **Fast** — 200×200 random maps plan in **3.9 ms at p95** (Release) against a
+  50 ms budget; the 500×500 floor plan above plans in ~12 ms.
+- **Optimal** — path lengths match a Dijkstra ground truth exactly.
+- **Optimality is conditional** — Manhattan distance on an 8-connected grid
+  overestimates diagonals and silently returned a path 1.13 cells too long;
+  that pairing is now rejected at config load and in the planner constructor.
 
 ---
 
-## Earlier milestones — V0 and V1
+## Earlier milestones — V0 to V2
 
 **V0** established the scaffolding every later version reuses: C++23
 modules, differential-drive kinematics, the `Trajectory<T>` container with
 ADL extension points, and deterministic CSV next to live Rerun output.
 **V1** introduced two independent imperfect channels — a Velocity Motion
 Model at the actuator and slip + quantization at the wheel encoder — and
-quantified the open-loop odometry drift that V2's EKF was built to fight.
-See [`docs/v0_summary.md`](docs/v0_summary.md) and
-[`docs/v1_summary.md`](docs/v1_summary.md); both versions are reachable at
-tags `v0.1.0` and `v0.2.0`.
+quantified the open-loop odometry drift. **V2** replaced that odometry with a
+6-state Extended Kalman Filter (`[pₓ, p_y, θ, v, ω, b_ω]`) that fuses encoders
+and a gyro as observations, estimates the gyro bias online, and is checked with
+NIS diagnostics; across 20 seeds the gain over odometry is preset-dependent
+(−48.9 % position RMSE at `low-noise`, −8.3 % at `default`), and online bias
+estimation destabilizes the filter at `high-noise`. See
+[`docs/v0_summary.md`](docs/v0_summary.md), [`docs/v1_summary.md`](docs/v1_summary.md),
+[`docs/v2_summary.md`](docs/v2_summary.md) and
+[`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md).
 
 ---
 
@@ -175,7 +178,7 @@ tags `v0.1.0` and `v0.2.0`.
 | **V1**  | Sensors, noise, odometry | Velocity Motion Model, encoder slip + quantization, `WheelOdometry`, drift experiments             | ✅      |
 | **V2**  | EKF state estimation     | Gyro IMU model, 6-state EKF (predict + encoder/IMU updates), online gyro-bias estimation, RK4 process model, NIS diagnostics, 20-seed RMSE study vs odom baseline | ✅      |
 | **V3**  | Path planning            | Occupancy grid (PGM + `map.yaml`), Euclidean obstacle inflation, A\* with admissibility-checked heuristics, YAML planner config, spdlog / gmock, `sim --map` planning mode | ✅      |
-| **V4**  | Closed-loop path tracking | Regulated Pure Pursuit tracking the A\* path in the C++ simulation with the EKF estimate in the loop; control error measured separately from localization drift |        |
+| **V4**  | Closed-loop path tracking | Regulated Pure Pursuit tracking the smoothed A\* path in the C++ simulation with the EKF estimate in the loop; actuator lag and saturation; control error measured separately from localization drift; golden CSV regression | ✅      |
 | **V5**  | ROS 2 + Nav2 integration | Simulation and EKF nodes on standard messages; the A\* planner and the controller as Nav2 plugins; RViz2 goal-to-arrival demo |        |
 | **V6**  | Real-world deploy        | Sim-to-real on Pi 5 + 4WD car, indoor navigation video                                             |        |
 
@@ -207,6 +210,12 @@ extended as the stack grew.
   baseline + Python post-processing); Rerun is interactive (live
   development); static PNGs are the publication artifact. Each format
   has a different reader and a different job.
+- **Golden regression on a Debug + Release CI matrix**. Every mode writes
+  deterministic CSV (the same seed gives the same file, with no wall-clock
+  values). Committed baselines for the EKF, planning and closed-loop modes are
+  compared in CTest by a small `csv_compare` tool — integers exact, floats
+  within 1e-9 relative to absorb libm differences between CPUs — and change
+  only through a deliberate `update_golden` target.
 - **External configuration and structured logging**. yaml-cpp reads
   `robot.yaml` (the single source of robot geometry and limits),
   `planner.yaml` and `map.yaml`, rejecting unknown keys; spdlog backs the unchanged
@@ -228,7 +237,7 @@ extended as the stack grew.
 ┌─────────────────────────────────────────────┐
 │ Layer 5: Real Robot Deployment              │  Raspberry Pi 5 + 4WD car  (V6)
 ├─────────────────────────────────────────────┤
-│ Layer 4: Motion Control                     │  Regulated Pure Pursuit    (V4)
+│ Layer 4: Motion Control                     │  Regulated Pure Pursuit    (V4 ✅)
 ├─────────────────────────────────────────────┤
 │ Layer 3: Global Planning                    │  Occupancy grid + A*       (V3 ✅)
 ├─────────────────────────────────────────────┤
@@ -305,7 +314,7 @@ neither `planning` nor `control`.
 **Versioning policy.** `main` reflects the current best design; superseded
 code is refactored away rather than kept alongside. Each completed
 milestone is preserved as a git tag and GitHub release (`v0.1.0`=V0,
-`v0.2.0`=V1, `v0.3.0`=V2, `v0.4.0`=V3) plus a retrospective in `docs/`, so
+`v0.2.0`=V1, `v0.3.0`=V2, `v0.4.0`=V3, `v0.5.0`=V4) plus a retrospective in `docs/`, so
 every prior version stays reachable through history without weighing down
 the trunk.
 
@@ -349,9 +358,9 @@ ctest --preset test-debug -L regression --output-on-failure
 ### Run the simulation
 
 `sim` takes a subcommand: `sim ekf` runs the localization simulation,
-`sim plan` a one-shot global plan, and `sim nav` the closed loop (V4, in
-progress). `sim <mode> --help` lists each mode's options; `sim` alone prints
-the overview.
+`sim plan` a one-shot global plan, and `sim nav` the closed loop (V4).
+`sim <mode> --help` lists each mode's options; `sim` alone prints the
+overview.
 
 ```bash
 # Default: random seed, default preset, RK4 integrator, online bias estimation
@@ -419,7 +428,7 @@ hand-drawn demo maps, it stays connected once inflated by the robot footprint.
 The current layout is a placeholder; editing the TOML with the real room's
 measurements and regenerating swaps it out.
 
-### Drive a path (V4 closed loop, in progress)
+### Drive a path (V4 closed loop)
 
 `sim nav` plans from the EKF's initial estimate, smooths the path, and tracks
 it with Regulated Pure Pursuit at 20 Hz on a 100 Hz plant with actuator
@@ -537,7 +546,8 @@ The scripts change parameters by writing variants of `config/robot.yaml` and
 V0 (kinematics scaffold) and V1 (noise + wheel-odometry drift) live at git
 tags `v0.1.0` and `v0.2.0` — check one out to build and run its simulation,
 or read the retrospectives in `docs/`. The trunk carries only the current
-`sim`: the EKF simulation plus the V3 planning mode.
+`sim`, with its `ekf`, `plan` and `nav` subcommands; V2, V3 and V4 are tagged
+as `v0.3.0`, `v0.4.0` and `v0.5.0`.
 
 ---
 
@@ -591,6 +601,23 @@ data:
 | `/world/robot/start`         | Start pose                                      |
 | `/world/robot/goal`          | Goal pose                                       |
 
+In closed-loop mode (`sim nav`), the planning scene is logged once and every
+step adds the V2 robot channels plus:
+
+| Entity path                               | Meaning                                                   |
+|-------------------------------------------|-----------------------------------------------------------|
+| `/world/plan/raw`                         | The raw A\* staircase (the smoothed path is `/world/plan/path`) |
+| `/world/control/lookahead`                | The controller's look-ahead point                         |
+| `/world/control/arc`                      | The pursuit arc from the controller's input pose to it    |
+| `/world/estimate/ekf_cov`                 | EKF 3σ position ellipse                                   |
+| `/world/robot/actuator/{v,w}`             | Actuator output after saturation and lag                  |
+| `/plots/error/{ctrl,est,true}`            | Control, estimation and true error                        |
+| `/plots/clearance`, `/plots/regime`       | True clearance to obstacles, controller regime            |
+
+World-frame geometry lives under `/world/control` and `/world/estimate`, never
+under a pose entity that carries a `Transform3D`, so Rerun does not transform it
+twice.
+
 ---
 
 ## Documentation
@@ -602,6 +629,7 @@ Per-version retrospectives and design notes live under `docs/`:
 - [`docs/v1_summary.md`](docs/v1_summary.md) — V1 retrospective: noise modelling, encoder physics, RNG design, drift analysis
 - [`docs/v2_summary.md`](docs/v2_summary.md) — V2 retrospective: 6-state EKF design, sensors-as-observations, the bias-estimation operating envelope, RK4 process model, NIS diagnostics
 - [`docs/v3_summary.md`](docs/v3_summary.md) — V3 retrospective: occupancy-grid and configuration-space design, the heuristic–connectivity admissibility rule, the timing-test lesson, technical debt toward V4
+- [`docs/v4_summary.md`](docs/v4_summary.md) — V4 retrospective: plant / estimator split, `robot.yaml`, the RPP subset behind `nav2_core`-shaped interfaces, path smoothing, the golden regression guard, and what the drift data means for V5 / V6
 - [`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md) — V2 experiment report: 20-seed EKF-vs-odom RMSE study, the bias-estimation operating envelope, NIS consistency, covariance/observability analysis
 - [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md) — V3 experiment report: timing benchmark (200×200 and a 500×500 floor plan), optimality vs Dijkstra, heuristic admissibility, determinism
 - [`docs/experiments/v4_control.md`](docs/experiments/v4_control.md) — V4 experiment report: Pure Pursuit theory vs simulation, corner cutting and safety margins, the look-ahead trade-off, the control vs localization error split and drift over distance

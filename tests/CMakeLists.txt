@@ -150,7 +150,7 @@ gtest_discover_tests(planning_tests
 
 # ------------------------------------------------------------------
 # control 模块的测试(Pure Pursuit + 平滑器 + 到达 / 卡住判定 + 配置解析)
-# pure_pursuit_analytic_tests 用闭环仿真对照 docs/v4_plan.md §3 的解析结论。
+# pure_pursuit_analytic_tests 用闭环仿真对照 docs/math/pure_pursuit.md §3–§7 的解析结论。
 # ------------------------------------------------------------------
 add_executable(control_tests
         control/pure_pursuit_tests.cpp
