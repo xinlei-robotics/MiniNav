@@ -441,10 +441,17 @@ shows the loop in Rerun.
 # Noise-free plant (encoder quantization only)
 ./build/clang18-debug/sim nav --map maps/apartment.yaml --start 2.9,1.6,1.5708 \
     --goal 7.2,5.6 --preset none --no-viz
+
+# Follow a given path instead of planning one (Nav2 FollowPath); no map needed
+./build/clang18-debug/sim nav --path tests/nav/l_path.csv --preset none \
+    --controller-input truth --no-viz
 ```
 
-`--goal` is required and `--start` defaults to the grid center (both in world
-meters). Take timing numbers from the Release build
+When planning, `--map` and `--goal` are required and `--start` defaults to the
+grid center (all in world meters). `--path` takes a `path.csv` as written by
+`sim plan`, or any CSV with `x,y` columns: the goal is its last waypoint, the
+start defaults to its first, and `--map` becomes optional (it only enables the
+collision and clearance checks). Take timing numbers from the Release build
 (`cmake --preset clang18-release && cmake --build --preset build-release -j`).
 
 ### Generate the V2 EKF figures
@@ -506,6 +513,24 @@ python scripts/v3/animate_search.py --map maps/office500.yaml --start 1.175,1.17
 All figures land in `results/v3/`, named after the map. Every `path.csv`
 embeds the map, start, goal, heuristic, connectivity, inflation radius,
 success flag, expanded-node count, and path length in its header comments.
+
+### Generate the V4 control figures
+
+```bash
+cmake --build --preset build-release -j   # the scripts drive build/clang18-release/sim
+source .venv/bin/activate
+
+python scripts/v4/scenarios.py        # S1–S5 scenario list            -> scenarios.png
+python scripts/v4/step_response.py    # E1: linearization and lag theory -> e1_*.png
+python scripts/v4/corner_cutting.py   # E2: corner cutting and margins -> e2_*.png
+python scripts/v4/run_scenarios.py    # E3/E4 batch runs (~1 min) into data/v4/
+python scripts/v4/tracking_error.py   # E3/E4: trade-off, error split, drift -> e3_*.png, e4_*.png
+python scripts/v4/animate_nav.py      # closed-loop animation (the header GIF) -> nav_s3.gif
+```
+
+Figures land in `results/v4/`; the raw runs stay in the gitignored `data/v4/`.
+The scripts change parameters by writing variants of `config/robot.yaml` and
+`config/nav.yaml`, so every run starts from the repository defaults.
 
 ### Reproducing earlier milestones (V0, V1)
 
@@ -579,6 +604,7 @@ Per-version retrospectives and design notes live under `docs/`:
 - [`docs/v3_summary.md`](docs/v3_summary.md) — V3 retrospective: occupancy-grid and configuration-space design, the heuristic–connectivity admissibility rule, the timing-test lesson, technical debt toward V4
 - [`docs/experiments/v2_ekf_fusion.md`](docs/experiments/v2_ekf_fusion.md) — V2 experiment report: 20-seed EKF-vs-odom RMSE study, the bias-estimation operating envelope, NIS consistency, covariance/observability analysis
 - [`docs/experiments/v3_planning.md`](docs/experiments/v3_planning.md) — V3 experiment report: timing benchmark (200×200 and a 500×500 floor plan), optimality vs Dijkstra, heuristic admissibility, determinism
+- [`docs/experiments/v4_control.md`](docs/experiments/v4_control.md) — V4 experiment report: Pure Pursuit theory vs simulation, corner cutting and safety margins, the look-ahead trade-off, the control vs localization error split and drift over distance
 
 Mathematical derivations live under `docs/math/`:
 
@@ -586,6 +612,7 @@ Mathematical derivations live under `docs/math/`:
 - [`docs/math/runge_kutta_integration.md`](docs/math/runge_kutta_integration.md) — RK4 process integration and its analytic Jacobian
 - [`docs/math/odom_noise.md`](docs/math/odom_noise.md) — velocity-motion-model noise, the basis for `Q` and `R`
 - [`docs/math/astar_planning.md`](docs/math/astar_planning.md) — occupancy grids, configuration-space inflation, the A\* optimality proof, heuristic admissibility and consistency under 4/8-connectivity
+- [`docs/math/pure_pursuit.md`](docs/math/pure_pursuit.md) — Pure Pursuit geometry, linearization, the lag stability bound, corner cutting, the safety-margin budget, and the error decomposition
 
 ---
 
