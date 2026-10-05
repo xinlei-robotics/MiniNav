@@ -9,7 +9,7 @@
 rerun-sdk==0.31.4
 
 # Analysis & static figure generation
-# (scripts/v1: drift, scripts/v2: EKF, scripts/v3: planning)
+# (scripts/v1: drift, scripts/v2: EKF, scripts/v3: planning, scripts/v4: control)
 numpy>=1.26
 pandas>=2.0
 matplotlib>=3.8

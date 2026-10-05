@@ -12,11 +12,14 @@
 From kinematic simulation to a Raspberry Pi 5 + 4WD car indoor navigation
 demo — built incrementally, version by version.
 
-<img src="results/v3/search_office500.gif" alt="MiniNav V3 — A* search across a 25 m × 25 m floor plan" width="720"/>
+<img src="results/v4/nav_s3.gif" alt="MiniNav V4 — Regulated Pure Pursuit tracking a smoothed A* path on the EKF estimate" width="760"/>
 
-*V3: A\* searching a procedurally generated 25 m × 25 m floor plan
-(500×500 cells, 36 rooms). Color encodes expansion order (purple → yellow);
-green is the final path — about 39k nodes expanded in ~12 ms (Release build).*
+*V4: closed loop in the deterministic C++ simulation — A\* plans from the EKF
+estimate, the path is smoothed (gray → green), and a Regulated Pure Pursuit
+controller tracks it through two doorways using the **estimate**, not the
+ground truth (black: true trajectory, red: EKF). Right: the controller's view —
+chassis, pursuit arc to the look-ahead point, and the EKF 3σ ellipse.
+Experiments: [`docs/experiments/v4_control.md`](docs/experiments/v4_control.md).*
 
 </div>
 

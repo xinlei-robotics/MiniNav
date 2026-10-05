@@ -11,6 +11,7 @@ module;
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -34,6 +35,7 @@ import mininav.localization.ekf_pipeline;
 import mininav.planning.grid_types;
 import mininav.planning.occupancy_grid;
 import mininav.planning.map_io;
+import mininav.planning.inflation;
 import mininav.planning.planner_config;
 import mininav.planning.astar;
 import mininav.planning.path_smoothing;
@@ -59,6 +61,9 @@ import mininav.viz.nav_log;
 //        - EkfPipeline 用传感器读数推进;记录一行 NavStep;
 //        - 真值车体(外接圆)碰到原始地图的占据 cell 即判碰撞。
 //   4. nav.csv:头部元数据 + 每步一行;不含墙钟时间,同 seed 逐字节一致。
+//
+// --path FILE(对应 Nav2 的 FollowPath):跳过规划,直接跟随给定路径。用于在合成
+// 路径(直线、单转角)上做控制实验;此时地图可选,给了才判碰撞 / 算净空。
 // ===========================================================================
 
 namespace mininav::apps
@@ -73,6 +78,8 @@ namespace mininav::apps
 
         // 净空只在车体外 kClearanceCap 以内精确计算,更远的截断(画图与统计都够用)。
         constexpr double kClearanceCap = 0.5;
+        // 没有地图(--path 且未给 --map)时净空无定义,CSV 里写 nan。
+        constexpr double kNoClearance = std::numeric_limits<double>::quiet_NaN();
 
         // ---- nav.yaml ---------------------------------------------------------
         // 段名与 V5 的 Nav2 参数文件对应;各段交给所属库的解析函数(严格模式)。
@@ -241,7 +248,11 @@ namespace mininav::apps
             const control::PurePursuitConfig& pp = info.nav.controller.pursuit;
             const Pose2D& g = info.goal.pose;
             out << "# MiniNav closed-loop navigation\n";
-            out << "# map = " << info.opts.map_path << '\n';
+            out << "# map = " << info.opts.map_path.value_or("none") << '\n';
+            if (info.opts.path_file.has_value())
+            {
+                out << "# path_file = " << *info.opts.path_file << '\n';
+            }
             out << "# start = " << info.start.pose.x() << ',' << info.start.pose.y() << ','
                 << info.start.pose.yaw() << '\n';
             out << "# goal = " << g.x() << ',' << g.y();
@@ -309,11 +320,16 @@ namespace mininav::apps
         using namespace planning;
         using namespace control;
 
-        // 1. 配置、机器人、地图
+        // 1. 配置、机器人、地图(--path 模式:给定路径,地图可选)
+        const bool follow = opts.path_file.has_value();
+        if (!follow && (!opts.map_path.has_value() || !opts.goal_str.has_value()))
+        {
+            throw std::runtime_error{"nav: --map and --goal are required unless --path is given"};
+        }
         const RobotDescription robot = load_robot_description(opts.robot_path);
         const NavConfig nav = load_nav_config(opts.nav_path);
         const double footprint = robot.footprint.circumscribed_radius();
-        if (nav.planner.inflation_radius < footprint)
+        if (!follow && nav.planner.inflation_radius < footprint)
         {
             std::ostringstream msg;
             msg << "nav: planner.inflation_radius (" << nav.planner.inflation_radius
@@ -322,18 +338,37 @@ namespace mininav::apps
             throw std::runtime_error{msg.str()};
         }
         const bool oracle = opts.controller_input == "truth";
-        const OccupancyGrid map = load_occupancy_grid(opts.map_path);
+        const std::optional<OccupancyGrid> map =
+            opts.map_path.has_value() ? std::optional{load_occupancy_grid(*opts.map_path)} : std::nullopt;
+        const Path given = follow ? load_path_csv(*opts.path_file) : Path{};
 
-        const PoseArg start = opts.start_str.has_value()
-                                  ? parse_pose(*opts.start_str)
-                                  : PoseArg{.pose = Pose2D{grid_center(map), 0.0}, .has_yaw = false};
-        const PoseArg goal = parse_pose(opts.goal_str);
+        PoseArg start{};
+        if (opts.start_str.has_value())
+        {
+            start = parse_pose(*opts.start_str);
+        }
+        else if (follow)
+        {
+            start = PoseArg{.pose = given.poses.front(), .has_yaw = true};
+        }
+        else
+        {
+            start = PoseArg{.pose = Pose2D{grid_center(*map), 0.0}, .has_yaw = false};
+        }
+        // --path:终点是路径末点,不检查朝向。
+        const PoseArg goal = follow ? PoseArg{.pose = given.poses.back(), .has_yaw = false}
+                                    : parse_pose(*opts.goal_str);
         const std::uint64_t seed = resolve_seed(opts.seed);
         const simulation::NoisePreset& preset = simulation::noise_preset(opts.preset_name);
         {
             std::ostringstream banner;
-            banner << "MiniNav nav: map = " << opts.map_path << ", preset = " << preset.name
-                << ", seed = " << seed << ", controller_input = " << opts.controller_input;
+            banner << "MiniNav nav: map = " << opts.map_path.value_or("none");
+            if (follow)
+            {
+                banner << ", path = " << *opts.path_file;
+            }
+            banner << ", preset = " << preset.name << ", seed = " << seed
+                << ", controller_input = " << opts.controller_input;
             log::info(banner.str());
         }
 
@@ -351,22 +386,38 @@ namespace mininav::apps
             start.pose};
 
         // 3. 规划:从 EKF 的初始估计出发,在同一张膨胀 costmap 上做路径后处理。
-        const AStarPlanner planner{map, nav.planner};
-        const PlanResult plan = planner.plan(estimator.pose(), goal.pose);
+        //    --path 模式直接用给定路径(raw 与最终路径相同)。
+        std::optional<AStarPlanner> planner;
+        Path raw_path;
         Path path;
-        if (plan.success)
+        bool have_path = false;
+        if (follow)
         {
-            path = smooth_path(plan.path, planner.costmap(), planner.config(), estimator.pose(), goal.pose,
-                               nav.smoothing);
-            if (goal.has_yaw)
-            {
-                path.poses.back().set_yaw(goal.pose.yaw());
-            }
-        }
-        {
+            raw_path = given;
+            path = given;
+            have_path = true;
             std::ostringstream msg;
-            msg << "nav: plan success=" << (plan.success ? 1 : 0) << " raw " << plan.path.size()
-                << " waypoints / " << plan.path.length() << " m -> " << path.size() << " waypoints / "
+            msg << "nav: following " << path.size() << " waypoints / " << path.length() << " m";
+            log::info(msg.str());
+        }
+        else
+        {
+            planner.emplace(*map, nav.planner);
+            PlanResult plan = planner->plan(estimator.pose(), goal.pose);
+            have_path = plan.success;
+            if (plan.success)
+            {
+                path = smooth_path(plan.path, planner->costmap(), planner->config(), estimator.pose(),
+                                   goal.pose, nav.smoothing);
+                if (goal.has_yaw)
+                {
+                    path.poses.back().set_yaw(goal.pose.yaw());
+                }
+            }
+            raw_path = std::move(plan.path);
+            std::ostringstream msg;
+            msg << "nav: plan success=" << (have_path ? 1 : 0) << " raw " << raw_path.size()
+                << " waypoints / " << raw_path.length() << " m -> " << path.size() << " waypoints / "
                 << path.length() << " m";
             log::info(msg.str());
         }
@@ -387,11 +438,25 @@ namespace mininav::apps
         {
             register_statics(*sink, kRobotEntityPath);
             sink->set_time(0.0);
-            NavScene scene{
-                .plan = build_plan_scene(map, planner.costmap(), path, start.pose, goal.pose),
-                .raw_path = {},
-            };
-            for (const Pose2D& p : plan.path.poses)
+            NavScene scene{};
+            if (map.has_value())
+            {
+                // --path 模式没有规划器,膨胀层只为显示而算。
+                scene.plan = build_plan_scene(*map,
+                                              planner.has_value() ? planner->costmap()
+                                                                  : inflate(*map, nav.planner.inflation_radius),
+                                              path, start.pose, goal.pose);
+            }
+            else
+            {
+                scene.plan.start = start.pose;
+                scene.plan.goal = goal.pose;
+                for (const Pose2D& p : path.poses)
+                {
+                    scene.plan.path.emplace_back(p.x(), p.y());
+                }
+            }
+            for (const Pose2D& p : raw_path.poses)
             {
                 scene.raw_path.emplace_back(p.x(), p.y());
             }
@@ -401,13 +466,17 @@ namespace mininav::apps
         // 5. 闭环
         Trajectory<NavStep> trajectory;
         NavOutcome outcome{};
+        if (!map.has_value())
+        {
+            outcome.min_clearance = kNoClearance;
+        }
         outcome.final_truth = plant.truth();
         outcome.final_input = estimator.pose();
         NavDiagnostics held{};   // 最近一个控制节拍的控制器输出(零阶保持)
         Twist2D cmd{};
         Twist2D true_velocity{}; // oracle 模式下作为控制器的速度输入
 
-        if (plan.success)
+        if (have_path)
         {
             outcome.status = NavStatus::Timeout;
             for (std::size_t k = 0;; ++k)
@@ -472,9 +541,13 @@ namespace mininav::apps
                 step.nav.e_ctrl = distance_to_path(path, input.position());
                 step.nav.e_true = distance_to_path(path, truth.position());
                 step.nav.e_est = (truth.position() - input.position()).norm();
-                step.nav.clearance = footprint_clearance(map, truth.position(), footprint);
+                step.nav.clearance =
+                    map.has_value() ? footprint_clearance(*map, truth.position(), footprint) : kNoClearance;
 
-                outcome.min_clearance = std::min(outcome.min_clearance, step.nav.clearance);
+                if (map.has_value())
+                {
+                    outcome.min_clearance = std::min(outcome.min_clearance, step.nav.clearance);
+                }
                 outcome.max_e_ctrl = std::max(outcome.max_e_ctrl, step.nav.e_ctrl);
                 outcome.max_e_true = std::max(outcome.max_e_true, step.nav.e_true);
 
@@ -514,7 +587,7 @@ namespace mininav::apps
         write_nav_csv(out_path,
                       NavRunInfo{
                           .opts = opts, .robot = robot, .nav = nav, .start = start, .goal = goal,
-                          .seed = seed, .max_time = max_time, .raw_path = plan.path, .path = path,
+                          .seed = seed, .max_time = max_time, .raw_path = raw_path, .path = path,
                       },
                       outcome, trajectory);
         log::info("Nav CSV written to " + out_path.string());

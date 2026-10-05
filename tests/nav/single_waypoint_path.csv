@@ -1,0 +1,3 @@
+# A path needs at least two waypoints; sim nav --path must reject this file
+x,y
+0,0

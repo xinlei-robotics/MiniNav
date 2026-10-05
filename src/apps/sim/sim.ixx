@@ -78,9 +78,10 @@ export namespace mininav::apps
     // `sim nav` 的选项。
     struct NavOptions
     {
-        std::string map_path;
-        std::optional<std::string> start_str; // "x,y[,yaw]";缺省为栅格中心、朝向 0
-        std::string goal_str;                 // "x,y[,yaw]";给了 yaw 才检查到达朝向
+        std::optional<std::string> map_path;  // 规划时必需;--path 模式下可选(给了才判碰撞)
+        std::optional<std::string> path_file; // 跟随给定路径(path.csv 格式),不规划(Nav2 FollowPath)
+        std::optional<std::string> start_str; // "x,y[,yaw]";缺省为栅格中心(--path:路径首点)
+        std::optional<std::string> goal_str;  // "x,y[,yaw]";给了 yaw 才检查到达朝向(--path:路径末点)
         std::optional<std::uint64_t> seed;
         std::string preset_name{"default"};
         std::string robot_path;               // main 里缺省为 config/robot.yaml
@@ -122,6 +123,10 @@ namespace mininav::apps
         bool has_yaw{false};
     };
     [[nodiscard]] PoseArg parse_pose(const std::string& s);
+
+    // 读 path.csv 形式的路径(`sim plan` 的输出):'#' 开头的行是元数据;表头必须含
+    // x、y 列,yaw 列可选(缺省按线段方向补,末点沿用前一段)。至少两个 waypoint。
+    [[nodiscard]] Path load_path_csv(const std::string& file);
 
     // 未指定 --seed 时从 std::random_device 取一个(调用方负责打印,保证可复现)。
     [[nodiscard]] std::uint64_t resolve_seed(std::optional<std::uint64_t> requested);

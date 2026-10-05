@@ -25,6 +25,7 @@ env/
 /results/*.pdf
 /results/*.rrd
 /data/*.csv
+/data/v4/
 
 # OS
 .DS_Store

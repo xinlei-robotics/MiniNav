@@ -354,6 +354,15 @@ mininav_add_nav_test(rejects_inflation_below_footprint "smaller than the robot's
         --map maps/apartment.yaml --start 0.6,3.6 --goal 2.9,5.6 --nav tests/nav/small_inflation.yaml)
 mininav_add_nav_test(rejects_unknown_config_section "unknown section 'planer'"
         --map maps/apartment.yaml --start 0.6,3.6 --goal 2.9,5.6 --nav tests/nav/unknown_section.yaml)
+# --path(Nav2 FollowPath):不规划、不要地图,沿给定路径(无 yaw 列,朝向按线段补)跑到末点。
+mininav_add_nav_test(follow_path_arrives "status=arrived"
+        --path tests/nav/l_path.csv --seed 1 --preset none --controller-input truth)
+mininav_add_nav_test(follow_path_rejects_goal "--goal excludes --path"
+        --path tests/nav/l_path.csv --goal 2,1.5)
+mininav_add_nav_test(follow_path_rejects_single_waypoint "needs at least two waypoints"
+        --path tests/nav/single_waypoint_path.csv)
+mininav_add_nav_test(requires_map_or_path "--map and --goal are required unless --path is given"
+        --goal 2.9,5.6)
 
 # 确定性:同 seed 两次运行的 nav.csv 逐字节一致(头部不含墙钟时间)。
 foreach(run a b)
