@@ -121,13 +121,21 @@ namespace
             "track it with Regulated Pure Pursuit until arrival, collision, stall or timeout "
             "(nav.csv + Rerun view).");
 
-        cmd->add_option("--map", opts.map_path, "Map description (map.yaml, ROS map_server style).")
-           ->required();
-        cmd->add_option("--goal", opts.goal_str,
-                        "Goal as \"x,y\" or \"x,y,yaw\" (the heading is checked only when given).")
-           ->required();
+        cmd->add_option("--map", opts.map_path,
+                        "Map description (map.yaml, ROS map_server style). Required unless --path is "
+                        "given; with --path it only enables collision and clearance checks.");
+        CLI::Option* goal = cmd->add_option(
+            "--goal", opts.goal_str,
+            "Goal as \"x,y\" or \"x,y,yaw\" (the heading is checked only when given). Required "
+            "unless --path is given.");
+        cmd->add_option("--path", opts.path_file,
+                        "Follow this path instead of planning one (Nav2 FollowPath): a path.csv as "
+                        "written by `sim plan` (x and y columns, yaw optional). The goal is its last "
+                        "waypoint.")
+           ->excludes(goal);
         cmd->add_option("--start", opts.start_str,
-                        "Start as \"x,y\" or \"x,y,yaw\" (default: grid center, heading 0).");
+                        "Start as \"x,y\" or \"x,y,yaw\" (default: grid center, heading 0; with "
+                        "--path, the first waypoint).");
         cmd->add_option("--seed", opts.seed,
                         "Master RNG seed; if omitted, seeded from std::random_device.");
         cmd->add_option("--preset", opts.preset_name, "Noise preset (none = noise-free).")

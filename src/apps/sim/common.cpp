@@ -3,9 +3,12 @@ module;
 #include <Eigen/Core>
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <numbers>
 #include <optional>
 #include <random>
@@ -109,6 +112,107 @@ namespace mininav::apps
         }
         const double yaw = values.size() == 3 ? values[2] : 0.0;
         return PoseArg{.pose = Pose2D{values[0], values[1], yaw}, .has_yaw = values.size() == 3};
+    }
+
+    Path load_path_csv(const std::string& file)
+    {
+        std::ifstream in{file};
+        if (!in)
+        {
+            throw std::runtime_error{"path: cannot open '" + file + "'"};
+        }
+
+        const auto split = [](const std::string& line)
+        {
+            std::vector<std::string> fields;
+            std::stringstream ss{line};
+            std::string field;
+            while (std::getline(ss, field, ','))
+            {
+                fields.push_back(field);
+            }
+            return fields;
+        };
+        // 读下一条数据行(跳过空行与 '#' 元数据);没有了返回 false。
+        const auto next_line = [&in](std::string& line)
+        {
+            while (std::getline(in, line))
+            {
+                if (!line.empty() && line.back() == '\r')
+                {
+                    line.pop_back();
+                }
+                if (!line.empty() && line.front() != '#')
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        std::string line;
+        if (!next_line(line))
+        {
+            throw std::runtime_error{"path: '" + file + "' has no header line"};
+        }
+        const std::vector<std::string> columns = split(line);
+        const auto column = [&columns](const std::string_view name) -> std::optional<std::size_t>
+        {
+            const auto it = std::ranges::find(columns, name);
+            return it == columns.end() ? std::nullopt
+                                       : std::optional{static_cast<std::size_t>(it - columns.begin())};
+        };
+        const std::optional<std::size_t> ix = column("x");
+        const std::optional<std::size_t> iy = column("y");
+        const std::optional<std::size_t> iyaw = column("yaw");
+        if (!ix.has_value() || !iy.has_value())
+        {
+            throw std::runtime_error{"path: header of '" + file + "' must name x and y columns"};
+        }
+
+        Path path;
+        while (next_line(line))
+        {
+            const std::vector<std::string> fields = split(line);
+            if (fields.size() != columns.size())
+            {
+                throw std::runtime_error{"path: '" + file + "': wrong number of fields in: " + line};
+            }
+            const auto value = [&](const std::size_t i)
+            {
+                std::size_t used = 0;
+                double v = 0.0;
+                try
+                {
+                    v = std::stod(fields[i], &used);
+                }
+                catch (const std::exception&)
+                {
+                    used = 0;
+                }
+                if (used == 0 || used != fields[i].size())
+                {
+                    throw std::runtime_error{"path: '" + file + "': not a number: " + fields[i]};
+                }
+                return v;
+            };
+            path.poses.emplace_back(value(*ix), value(*iy), iyaw.has_value() ? value(*iyaw) : 0.0);
+        }
+        if (path.size() < 2)
+        {
+            throw std::runtime_error{"path: '" + file + "' needs at least two waypoints"};
+        }
+        if (!iyaw.has_value())
+        {
+            // 朝向按线段方向补:waypoint i 取 i → i+1 的方向,末点沿用前一段。
+            for (std::size_t i = 0; i + 1 < path.size(); ++i)
+            {
+                const Eigen::Vector2d d = path.poses[i + 1].position() - path.poses[i].position();
+                path.poses[i] = Pose2D{path.poses[i].position(), std::atan2(d.y(), d.x())};
+            }
+            path.poses.back() = Pose2D{path.poses.back().position(), path.poses[path.size() - 2].yaw()};
+        }
+        return path;
     }
 
     std::uint64_t resolve_seed(const std::optional<std::uint64_t> requested)

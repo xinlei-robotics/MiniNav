@@ -1,0 +1,5 @@
+# L-shaped test path (no yaw column: headings follow the segments)
+x,y
+0,0
+2,0
+2,1.5
