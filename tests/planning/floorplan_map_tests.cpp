@@ -20,7 +20,7 @@ import mininav.core.path;
 // ===========================================================================
 // maps/apartment:真实尺度的平面图(scripts/v4/gen_floorplan.py 从
 // maps/src/apartment.toml 生成)。V4 的闭环场景要求它在按车体膨胀后仍连通:
-// r_infl = 0.25 m ≥ 外接圆半径 0.136 m + 离散化与控制余量(docs/v4_plan.md §3.5)。
+// r_infl = 0.25 m ≥ 外接圆半径 0.136 m + 离散化与控制余量(docs/math/pure_pursuit.md §7)。
 // ===========================================================================
 
 namespace {
@@ -127,7 +127,7 @@ TEST(ApartmentMap, EveryRoomIsReachableAndSmoothable) {
 }
 
 // 手画的 V3 演示图是"玩具屋"尺度:膨胀 0.10 m(还不到车体外接圆半径 0.136 m)时,
-// office 的门就被堵死、分成两块,maze 已没有 free cell(docs/v4_plan.md §5.4)。
+// office 的门就被堵死、分成两块,maze 已没有 free cell(docs/v4_summary.md §4.6)。
 // 这里锁住这一事实,说明 V4 为什么需要新地图。
 TEST(ApartmentMap, HandDrawnDemoMapsDoNotSurviveFootprintInflation) {
   const std::filesystem::path maps{std::filesystem::path{PROJECT_ROOT_DIR} / "maps"};

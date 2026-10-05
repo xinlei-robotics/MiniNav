@@ -91,7 +91,7 @@ export namespace mininav::ekf
     // 只作观测),闭环里控制器每步最多把 v、ω 改变 a_max·dt、α_max·dt,这部分进 Q,
     // 即 q_dv = (a_max·dt)²、q_dw = (α_max·dt)²。缺省 0(EKF 模式的开环剖面不需要,
     // 输出逐位不变);没有它时,无执行噪声的档位 Q = 0,v、ω 方差收敛到 0,滤波器
-    // 跟不上加减速(docs/v4_plan.md §11.1)。
+    // 跟不上加减速(docs/v4_summary.md §3.9)。
     // ---------------------------------------------------------------------------
     struct ProcessNoiseParams
     {

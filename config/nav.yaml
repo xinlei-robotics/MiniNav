@@ -5,7 +5,8 @@
 #   goal_checker     → SimpleGoalChecker
 #   progress_checker → SimpleProgressChecker
 # 各段严格解析:未知段 / 未知 key 加载即报错;缺失字段取默认值。
-# 默认值的推导见 docs/v4_plan.md §3、§4.6(滞后稳定性、切角预算、转角限速)。
+# 默认值的推导见 docs/math/pure_pursuit.md(§10 列出每个参数由哪条推导决定:滞后稳定性、
+# 切角预算、转角限速);实验复核见 docs/experiments/v4_control.md。
 
 planner:
   inflation_radius: 0.25   # m,必须 ≥ 车体外接圆半径(robot.yaml 推导 ≈ 0.136 m),否则 sim nav 拒绝运行

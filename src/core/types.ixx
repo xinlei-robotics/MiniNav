@@ -129,7 +129,7 @@ export namespace mininav
     // ---------------------------------------------------------------------------
     // NavDiagnostics: 闭环导航(sim nav)一步的控制与评估量。
     //
-    // 误差分解(docs/v4_plan.md §3.6),P 为平滑后的路径、p_in 为控制器的输入位姿
+    // 误差分解(docs/math/pure_pursuit.md §8),P 为平滑后的路径、p_in 为控制器的输入位姿
     // (EKF 估计,或 oracle 实验中的真值):
     //   e_ctrl = dist(p_in, P)          控制器看得到、也只对它负责的误差
     //   e_true = dist(p_true, P)        真值横向误差
