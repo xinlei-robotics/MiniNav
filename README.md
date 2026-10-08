@@ -326,7 +326,7 @@ the trunk.
 
 - Linux (or WSL 2) — tested on Ubuntu 24.04
 - Clang 18+ with C++23 modules support
-- CMake 3.28+, Ninja
+- CMake 3.28+ (3.31+ for the ROS 2 workspace; CI pins 3.31.6), Ninja
 - Eigen3 ≥ 3.4 (`sudo apt install libeigen3-dev`)
 - Python venv with `rerun-sdk==0.31.4`:
 
@@ -354,6 +354,30 @@ ctest --preset test-debug --output-on-failure
 # Golden CSV regression only (end-to-end sim runs vs tests/golden/)
 ctest --preset test-debug -L regression --output-on-failure
 ```
+
+### ROS 2 workspace (V5, in progress)
+
+`ros/` is a colcon workspace for ROS 2 Jazzy. Its `mininav_core` package builds the
+ROS-free libraries above and installs them as the CMake package `MiniNav`, so ament
+packages can `find_package(MiniNav)` and `import` its C++23 modules. So far the workspace
+holds a toolchain check: a component node and a Nav2 controller plugin that import
+MiniNav modules, loaded by the stock `component_container` and `controller_server`. The
+simulation and EKF nodes and the Nav2 plugins follow in later V5 PRs.
+
+Requires ROS 2 Jazzy and CMake 3.31+ (CMake 3.28 cannot import installed C++ module
+interfaces reliably):
+
+```bash
+source /opt/ros/jazzy/setup.bash
+rosdep install --from-paths ros --ignore-src -y
+cd ros
+colcon build
+colcon test && colcon test-result --verbose
+```
+
+`ros/colcon_defaults.yaml` selects Clang 18 and Ninja and puts the build, install and
+log trees under `build/colcon/`. Run colcon outside the analysis `.venv`: with it
+activated, ament picks up the venv's Python and fails to import `catkin_pkg`.
 
 ### Run the simulation
 

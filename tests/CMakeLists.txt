@@ -20,7 +20,7 @@ target_link_libraries(core_tests
 
 # robot_description_tests 通过 PROJECT_ROOT_DIR 读取仓库里的 config/robot.yaml。
 target_compile_definitions(core_tests PRIVATE
-        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
+        PROJECT_ROOT_DIR="${PROJECT_SOURCE_DIR}"
 )
 
 set_property(TARGET core_tests PROPERTY CXX_SCAN_FOR_MODULES ON)
@@ -136,7 +136,7 @@ target_link_libraries(planning_tests
 
 # map_io_tests 通过 PROJECT_ROOT_DIR 定位 maps/ 下的手画测试地图。
 target_compile_definitions(planning_tests PRIVATE
-        PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
+        PROJECT_ROOT_DIR="${PROJECT_SOURCE_DIR}"
 )
 
 set_property(TARGET planning_tests PROPERTY CXX_SCAN_FOR_MODULES ON)

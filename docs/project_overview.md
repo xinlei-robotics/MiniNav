@@ -5,8 +5,8 @@
 > 路径规划、闭环跟踪控制、ROS 2 + Nav2 集成,并最终在 Raspberry Pi 5 + 4WD
 > 小车平台上完成室内自主移动的实车闭环。
 
-> **当前进度(截至 2026-10):V0–V4 已完成**,V5(ROS 2 + Nav2 集成)为下一个
-> 里程碑。2026-09-28 调整了 V4 / V5 的划分:V4 只在纯 C++ 仿真里完成闭环跟踪,
+> **当前进度(截至 2026-10):V0–V4 已完成**,V5(ROS 2 + Nav2 集成)进行中。
+> 2026-09-28 调整了 V4 / V5 的划分:V4 只在纯 C++ 仿真里完成闭环跟踪,
 > ROS 2 + Nav2 集成整体移到 V5(理由见 §6 V4)。本文档既是项目总愿景,也是版本
 > 路线图——已完成版本(✅)的描述对齐仓库真实状态,未完成版本(V5–V7)是
 > **前瞻规划**,其模块名、目录、量化指标均为设计意图,可能随实现调整。
@@ -44,7 +44,7 @@ MiniNav 要回答移动机器人导航领域最核心的三个问题:
 | 类别   | 工具                                         |
 |------|--------------------------------------------|
 | 编译器  | Clang 18                                   |
-| 构建系统 | CMake 3.28 + Ninja                         |
+| 构建系统 | CMake 3.31 + Ninja(核心最低 3.28;ROS 2 包导入已安装的 C++ 模块需要 3.31) |
 | 配置   | `CMakePresets.json`(Debug/Release presets) |
 | 链接器  | `lld`(`-fuse-ld=lld`)                      |
 | 测试   | GoogleTest + CTest(`gtest_discover_tests`) |
@@ -62,11 +62,12 @@ MiniNav 要回答移动机器人导航领域最核心的三个问题:
 | **yaml-cpp**              | `planner.yaml` / `map.yaml` 等外部配置文件   | V3(FetchContent 混合模式) |
 | **spdlog**                | 替换 V0 内置 logger,分级、带时间戳的日志        | V3(FetchContent 混合模式) |
 | **gmock**                 | `VizSink` 等接口的 mock,viz 层单测         | V3(随 GoogleTest)      |
-| **ROS 2 (Jazzy Jalisco)** | 节点化、标准消息与 TF、RViz2 可视化、launch 系统    | V5 引入(规划)             |
-| **Nav2**                  | 行为树导航编排;A\* 规划器与 Pure Pursuit 控制器以插件接入 | V5 引入(规划)             |
+| **ROS 2 (Jazzy Jalisco)** | 节点化、标准消息与 TF、RViz2 可视化、launch 系统    | V5 引入(进行中)           |
+| **Nav2**                  | 行为树导航编排;A\* 规划器与 Pure Pursuit 控制器以插件接入 | V5 引入(进行中)           |
 
 > **当前已集成**:Eigen3、GoogleTest / gmock、Rerun SDK、CLI11、yaml-cpp、
-> spdlog(V0–V3)。ROS 2 与 Nav2 是 V5 的**规划项,尚未引入**。
+> spdlog(V0–V3)。V5 起在 `ros/` 下建 colcon 工作空间:核心库导出为 CMake 包
+> `MiniNav`,ament 包 `find_package` 后 `import` 模块;节点与 Nav2 插件随 V5 后续 PR 加入。
 >
 > **依赖管理策略**:Eigen 用系统包(header-only 共享高效)、GoogleTest
 > 用纯 FetchContent(ABI 风险)、Rerun / CLI11 / yaml-cpp / spdlog 用
@@ -380,8 +381,12 @@ mininav/
 │   ├── nav/                        # 闭环集成测试用的 nav.yaml(过小膨胀、未知段、激进参数)与 --path 路径
 │   ├── tools/                      # csv_compare:golden 比较工具 + 单测
 │   └── golden/                     # golden CSV 回归基线(标签 regression,见 golden/README.md)
-└── ros2_ws/                        # (规划) V5:colcon 包——节点(仿真 / EKF)、
-                                    #   Nav2 插件(A* / Pure Pursuit)、bringup;只用标准消息
+└── ros/                            # V5:colcon 工作空间(colcon_defaults.yaml;产物在 build/colcon/)
+    ├── mininav_core/               # 包装包:构建核心库并安装为 CMake 包 MiniNav,连同 maps/、config/
+    ├── mininav_toolchain_check/    # 工具链检查:组件节点与 Nav2 控制器插件 import 模块,
+    │                               #   由原装 component_container / controller_server 加载
+    └── (规划)                      # mininav_sim / mininav_localization / mininav_nav2_plugins /
+                                    #   mininav_bringup:仿真与 EKF 节点、A* 与 RPP 插件、launch
 ```
 
 ---
@@ -508,7 +513,8 @@ V4 起由 `tests/golden/` 的 golden CSV 在 CI 里守护。
   - 仿真节点(包 `Plant`):订阅 `/cmd_vel`,发布 `/joint_states`(轮子位置)、
     `/imu`、`/clock`
   - EKF 节点(包 `EkfPipeline`):按时间戳异步融合,发布 `/odom` 与 TF
-    `odom→base_link`(REP-105;`map→odom` 暂为静态,留给绝对定位)
+    `odom→base_link`(REP-105);`map→odom` 由手动定位节点给出(RViz2 的
+    "2D Pose Estimate" 可改),V6 换成绝对定位
   - Nav2 插件:A\* 全局规划器与 Pure Pursuit 控制器(接口在 V3 / V4 已按
     `nav2_core` 形态设计,插件只是薄适配);导航流程交给 Nav2 的
     bt_navigator,不自写状态机
@@ -516,9 +522,15 @@ V4 起由 `tests/golden/` 的 golden CSV 在 CI 里守护。
     `OccupancyGrid`),不建自定义消息包。这些正是 V6 硬件驱动要发的话题,
     EKF 节点在仿真与实车之间一行不改
   - launch、参数文件、RViz2 配置;launch_testing 端到端测试进 CI
-- **量化指标**:5 个场景目标到达率 ≥ 80%(真值误差 ≤ 20 cm;按 V4 测得的漂移
-  曲线,单程 ≲ 5 m,或在各段之间重新给定初始位姿);端到端时延(goal 下发 →
-  第一条 cmd_vel)≤ 100 ms。V4 的 `sim nav` 同场景、同参数的结果是 V5 的对照基线
+  - ROS 只当最外层的壳:有逻辑的代码留在不依赖 ROS 的库里(核心库导出为 CMake 包
+    `MiniNav`,继续受 golden 回归保护),ROS 包只做消息转换、TF 与参数读取;适配层用
+    逐位一致测试证明无损,于是 V5 与 V4 的差异只可能来自异步时序与 TF
+- **量化指标**:5 个场景(单程 3.2–4.4 m,按 V4 测得的漂移曲线取 ≲ 5 m,目标带朝向)
+  × 10 seed,到达率 ≥ 80%(Nav2 报成功、无碰撞、真值终点误差 ≤ 20 cm;V4 同场景
+  基线 50/50);端到端时延(目标下发 → 第一条 `/cmd_vel`,墙钟)p95 ≤ 100 ms;
+  时序余量 r = τ_eff / T_L ≤ 0.2;适配无损——仿真节点、EKF 节点、控制器插件与库
+  逐位相同,规划器插件的路径与库在 1e-9 内相同。V4 的 `sim nav` 同场景、同 seed
+  的结果是配对对照基线
 - **交付**:colcon 工作空间、RViz2 导航 demo(MP4 + GIF,README 首屏与
   LinkedIn 分享素材)、`docs/experiments/v5_full_loop.md`
 
@@ -579,7 +591,7 @@ Viewer 实时渲染 3D/2D 视图与时间序列,支持暂停、回放、倒带;�
 | V2 | 在三轨迹上叠加 `ekf` 估计轨迹;`bias_omega` 学习曲线(估计 vs 真值)实时收敛演示;协方差椭圆演化由 Python 脚本离线出图                                                              |
 | V3 | 占据栅格 + 膨胀安全裕度 + A\* 规划路径 + 起止位姿(static);A\* 搜索展开过程由 `scripts/v3/animate_search.py` 离线渲染成动画                                         |
 | V4 | 闭环导航:地图 + 原始 / 平滑路径 + 真值与 EKF 轨迹 + EKF 3σ 椭圆 + look-ahead 点与追踪圆弧 + 控制 / 定位 / 真值三种误差时序 |
-| V5 | RViz2 为主(Nav2 标准面板:地图、代价地图、路径、机器人位姿);需要时把 ROS 2 topic 桥接到 Rerun |
+| V5 | RViz2(Nav2 标准面板:地图、代价地图、路径、估计与真值位姿、look-ahead 点与追踪圆弧);Rerun 继续服务 `sim`,不做 ROS topic 桥接 |
 | V6 | 实车实时可视化(Pi 端流到 PC 端 Rerun)                                                                                                               |
 
 ### 7.2 Python 静态图的角色
@@ -657,16 +669,20 @@ V4:`sim nav` 闭环集成测试进 CTest(标签 `nav`,15 条)——无噪声 / o
 多房间到达、目标朝向、激进参数下碰撞检测必然触发、`plan_failed`、配置错误在运行前
 失败、`--path` 跟随与参数互斥、同 seed 两次运行 `nav.csv` 逐字节一致。
 
-V5:引入 ROS 2 后,通过 `colcon test` + launch_testing 跑节点级与端到端集成
-测试——节点能否正常启动、topic 能否正确收发、发出目标后能否到达。
+V5:`colcon test` 跑适配层的逐位一致测试(gtest + rclcpp)与 launch_testing 的节点级、
+端到端测试(发出目标后能否到达、规划路径是否与 golden 相同)。PR0 起先有工具链检查:
+ament 包导入 MiniNav 模块、原装的 component_container / controller_server 加载我们的
+`.so`、`.so` 里没有第二份 spdlog / yaml-cpp。
 
 ### 8.5 持续集成
 
 GitHub Actions 已激活,环境为 `ubuntu-24.04 + clang-18`,每个 PR 与
 push 到 `main` 时以 Debug / Release 矩阵构建并跑全部测试(单元、golden 回归、
 闭环集成)。只在 Release 下有意义的断言(A\* 的 50 ms 耗时预算)在 Release job
-中真正执行;失败时上传测试日志与 golden 产出,便于 diff。V5 再加入 ROS 2 的
-colcon test。
+中真正执行;失败时上传测试日志与 golden 产出,便于 diff。V5 起另有 `ros2` job:
+在官方 `ros:jazzy-ros-base` 镜像里按各包的 `package.xml` 用 rosdep 装依赖(漏声明的
+依赖会在这里失败),再 `colcon build` + `colcon test`。两个 job 都锁定 CMake 3.31.6,
+不依赖 runner 镜像自带的版本。
 
 ---
 

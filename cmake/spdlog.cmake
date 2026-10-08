@@ -13,6 +13,14 @@
 #   - 若本机未安装 spdlog,则网络可访问 github.com
 # ---------------------------------------------------------------------------
 
+# MININAV_REQUIRE_SYSTEM_DEPS=ON(ROS 构建)时只认系统安装的 spdlog,找不到就失败,
+# 不回退到下载:Nav2 进程已经加载了 rcl_logging_spdlog 带来的系统 libspdlog,插件里
+# 再带一份不同版本,同名符号会被绑定到已加载的那份上,ABI 不一致。
+if (MININAV_REQUIRE_SYSTEM_DEPS)
+    find_package(spdlog REQUIRED)
+    return()
+endif ()
+
 include(FetchContent)
 
 set(MININAV_SPDLOG_VERSION "1.15.3" CACHE STRING
