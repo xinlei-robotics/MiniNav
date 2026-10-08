@@ -25,9 +25,12 @@ cmake_dependent_option(MININAV_BUILD_TESTS "Build the unit, regression and nav t
         "MININAV_BUILD_APPS" OFF)
 option(MININAV_REQUIRE_SYSTEM_DEPS
         "Take Eigen, spdlog and yaml-cpp from the system only; never download them" OFF)
+option(MININAV_INSTALL
+        "Install the ROS-free libraries as the CMake package MiniNav (requires CMake >= 3.31)" OFF)
 
 message(STATUS "MiniNav: viz=${MININAV_WITH_VIZ} apps=${MININAV_BUILD_APPS} "
-        "tests=${MININAV_BUILD_TESTS} system-deps-only=${MININAV_REQUIRE_SYSTEM_DEPS}")
+        "tests=${MININAV_BUILD_TESTS} system-deps-only=${MININAV_REQUIRE_SYSTEM_DEPS} "
+        "install=${MININAV_INSTALL}")
 
 # Nav2 插件是共享库,要把这些静态库链接进去,所以统一编成位置无关代码。
 # PIC 只改变寻址方式,不改变浮点语义;golden 回归逐字节验证这一点。
@@ -58,6 +61,11 @@ add_subdirectory(src/simulation)
 add_subdirectory(src/localization)
 add_subdirectory(src/planning)
 add_subdirectory(src/control)
+
+# 安装与导出(ROS 2 工作空间的 mininav_core 包装包打开它)
+if (MININAV_INSTALL)
+    include(mininav_install)
+endif ()
 
 # ------------------------------------------------------------------
 # 目标: sim

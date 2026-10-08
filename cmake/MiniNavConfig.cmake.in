@@ -1,0 +1,21 @@
+# MiniNav 的 CMake 包配置(由 cmake/mininav_install.cmake 生成并安装)。
+#
+# 下游用法:
+#   find_package(MiniNav REQUIRED)
+#   target_link_libraries(my_target PRIVATE MiniNav::control)   # 然后 import mininav.control.*;
+#
+# 下游必须与 MiniNav 用同一个编译器(Clang 的 BMI 不能被 GCC 读取)、C++23 且
+# CMAKE_CXX_EXTENSIONS OFF(c++23 与 gnu++23 的 BMI 不能混用),CMake >= 3.31。
+
+@PACKAGE_INIT@
+
+# 静态库的 PRIVATE 依赖也会出现在导出文件里:链接时是 $<LINK_ONLY:…>,
+# 下游重新编译模块接口时是 $<COMPILE_ONLY:…>。所以三者都要先找到。
+include(CMakeFindDependencyMacro)
+find_dependency(Eigen3 3.4 NO_MODULE)
+find_dependency(spdlog)
+find_dependency(yaml-cpp)
+
+include("${CMAKE_CURRENT_LIST_DIR}/MiniNavTargets.cmake")
+
+check_required_components(MiniNav)
