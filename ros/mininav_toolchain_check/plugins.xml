@@ -1,0 +1,7 @@
+<library path="stop_controller">
+  <class type="mininav_toolchain_check::StopController" base_class_type="nav2_core::Controller">
+    <description>
+      Toolchain check: brakes to zero through mininav::control::VelocitySmoother.
+    </description>
+  </class>
+</library>
