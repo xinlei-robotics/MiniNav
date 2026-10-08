@@ -81,7 +81,7 @@ Maps roughly 1:1 to CMake targets and the 5-layer architecture.
 | `area: planning`     | `mininav_planning` (V3+) — A*, occupancy grid       |
 | `area: control`      | `mininav_control` (V4+) — controller interfaces, Pure Pursuit |
 | `area: viz`          | `mininav_viz` — Rerun integration                   |
-| `area: ros2`         | `ros2_ws/*` (V5+) — nodes, Nav2 plugins, bringup    |
+| `area: ros2`         | `ros/*` (V5+) — colcon workspace: nodes, Nav2 plugins, bringup |
 | `area: hardware`     | Pi 5 / IMU / motors (V6+)                           |
 | `area: scripts`      | Python post-processing                              |
 | `area: build`        | CMake, presets, FetchContent setup                  |
@@ -118,7 +118,7 @@ answers "what does done look like for this version?"
 | V2 — EKF Sensor Fusion               | ✅ closed       | RMSE reduction ≥ 50% vs odom; Jacobian finite-diff tolerance ≤ 1e-6     |
 | V3 — Path Planning                   | ✅ closed       | A* on 200×200 map ≤ 50 ms; path length within 1 cell of shortest        |
 | V4 — Closed-Loop Path Tracking       | ✅ closed       | Control error (estimate-to-path): mean ≤ 10 cm, peak ≤ 30 cm; zero collisions with ground-truth feedback |
-| V5 — ROS 2 + Nav2 Integration        | open (next)    | Goal-reach rate ≥ 80% on 5 scenarios (single legs ≲ 5 m, from V4 drift data); e2e latency ≤ 100 ms |
+| V5 — ROS 2 + Nav2 Integration        | open (in progress) | Goal-reach rate ≥ 80% on 5 scenarios (single legs ≲ 5 m, from V4 drift data); e2e latency p95 ≤ 100 ms; τ_eff / T_L ≤ 0.2; adapters bit-identical to the libraries |
 | V6 — Real Robot Deployment           | open           | Sim-to-real gap table; Hausdorff distance quantified                    |
 | V7 — SLAM Integration                | open (stretch) | Indoor mapping + navigation video                                       |
 
