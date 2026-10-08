@@ -1,0 +1,29 @@
+name: Set up CMake
+description: >
+  Install a pinned CMake release from Kitware (SHA-256 checked) under /opt and put it first on
+  PATH for the rest of the job. Works on the hosted runner (sudo) and in root containers.
+
+inputs:
+  version:
+    description: CMake version, e.g. 3.31.6
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install CMake ${{ inputs.version }}
+      shell: bash
+      env:
+        CMAKE_VERSION: ${{ inputs.version }}
+      run: |
+        sudo=$([ "$(id -u)" -eq 0 ] || echo sudo)
+        base="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}"
+        tarball="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
+        cd "${RUNNER_TEMP}"
+        curl -fsSLO "${base}/${tarball}"
+        curl -fsSL "${base}/cmake-${CMAKE_VERSION}-SHA-256.txt" | grep " ${tarball}\$" | sha256sum -c -
+        ${sudo} tar -xzf "${tarball}" -C /opt
+        rm "${tarball}"
+        bin="/opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin"
+        "${bin}/cmake" --version | grep -F "cmake version ${CMAKE_VERSION}"
+        echo "${bin}" >> "${GITHUB_PATH}"
