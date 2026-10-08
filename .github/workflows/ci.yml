@@ -11,6 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Pinned rather than taken from the runner image: CMake 3.28 cannot import the
+# installed C++ module interfaces the ROS 2 packages consume, and an image
+# update to a new major version must not change the toolchain silently.
+env:
+  CMAKE_VERSION: 3.31.6
+
 jobs:
   build-and-test:
     name: Build and Test (Clang 18, ${{ matrix.build_type }})
@@ -41,13 +47,21 @@ jobs:
             libc++-18-dev \
             libc++abi-18-dev \
             ninja-build \
-            cmake \
             libeigen3-dev
+
+      - name: Install CMake ${{ env.CMAKE_VERSION }}
+        run: |
+          base="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}"
+          tarball="cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"
+          curl -fsSLO "${base}/${tarball}"
+          curl -fsSL "${base}/cmake-${CMAKE_VERSION}-SHA-256.txt" | grep " ${tarball}\$" | sha256sum -c -
+          sudo tar -xzf "${tarball}" -C /opt
+          echo "/opt/cmake-${CMAKE_VERSION}-linux-x86_64/bin" >> "${GITHUB_PATH}"
 
       - name: Verify toolchain versions
         run: |
           /usr/bin/clang++-18 --version
-          cmake --version
+          cmake --version | grep -F "cmake version ${CMAKE_VERSION}"
           ninja --version
 
       - name: Configure (${{ matrix.preset }} preset)
