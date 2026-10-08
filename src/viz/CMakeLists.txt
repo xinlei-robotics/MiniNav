@@ -31,7 +31,7 @@ target_link_libraries(viz
 set_property(TARGET viz PROPERTY CXX_SCAN_FOR_MODULES ON)
 set_target_properties(viz PROPERTIES LINKER_LANGUAGE CXX)
 
-set(_mininav_venv_bin "${CMAKE_SOURCE_DIR}/.venv/bin")
+set(_mininav_venv_bin "${PROJECT_SOURCE_DIR}/.venv/bin")
 if (EXISTS "${_mininav_venv_bin}/rerun")
     message(STATUS "MiniNav: Rerun Viewer found at ${_mininav_venv_bin}/rerun")
     target_compile_definitions(viz PRIVATE
