@@ -23,6 +23,7 @@ find_package(MiniNav REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_core REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -65,6 +66,7 @@ target_link_libraries(stop_controller PRIVATE
         MiniNav::core
         MiniNav::control
         ${geometry_msgs_TARGETS}
+        ${nav_msgs_TARGETS}
         pluginlib::pluginlib
         rclcpp::rclcpp
         rclcpp_lifecycle::rclcpp_lifecycle
