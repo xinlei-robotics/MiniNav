@@ -42,6 +42,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             clang-18 \
+            clang-tools-18 \
             lld-18 \
             libstdc++-13-dev \
             libc++-18-dev \
@@ -101,6 +102,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # clang-tools-18 provides clang-scan-deps: with C++23 set, CMake scans every
+      # try_compile for modules, so even find_package(Threads) fails without it.
       - name: Install compiler and build tools
         run: |
           apt-get update
@@ -108,6 +111,7 @@ jobs:
             ca-certificates \
             curl \
             clang-18 \
+            clang-tools-18 \
             libstdc++-13-dev \
             ninja-build
 
