@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mininav_core</name>
+  <version>0.5.0</version>
+  <description>
+    The ROS-free MiniNav libraries (core, sensors, simulation, localization, planning, control),
+    built as C++23 modules and installed as the CMake package MiniNav, plus the maps and
+    configuration files shared with the plain C++ simulator.
+  </description>
+  <maintainer email="xinlei-zhu@outlook.com">Xinlei Zhu</maintainer>
+  <license>MIT</license>
+  <url type="repository">https://github.com/xinlei-robotics/MiniNav</url>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>eigen</depend>
+  <depend>spdlog</depend>
+  <depend>yaml-cpp</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

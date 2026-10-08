@@ -1,0 +1,33 @@
+# colcon 工作空间的根目录就是 ros/:在这里运行 colcon,它会自动读取本文件。
+#
+#   source /opt/ros/jazzy/setup.bash
+#   cd ros
+#   colcon build
+#   colcon test && colcon test-result --verbose
+#   source ../build/colcon/install/setup.bash
+#
+# build / install / log 都放在仓库的 build/colcon/ 下,与 CMake preset 的 build/clang18-*
+# 并列(已被 .gitignore 忽略)。不要在激活了 .venv 的 shell 里运行:ament 会用 venv 的
+# python,找不到 catkin_pkg。
+
+"":
+  log-base: ../build/colcon/log
+
+build:
+  build-base: ../build/colcon/build
+  install-base: ../build/colcon/install
+  cmake-args:
+    # 整个工作空间用 Clang 18:Clang 的 BMI 不能被 GCC 读取,导入 MiniNav 模块的包
+    # 必须与核心用同一个编译器。
+    - -DCMAKE_CXX_COMPILER=clang++-18
+    # CMake 只在 Ninja / Visual Studio 生成器下支持 C++ 模块;colcon 缺省是 Makefiles。
+    - -GNinja
+    - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+    - -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+test:
+  build-base: ../build/colcon/build
+  install-base: ../build/colcon/install
+
+test-result:
+  test-result-base: ../build/colcon/build
